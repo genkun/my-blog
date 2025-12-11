@@ -6,13 +6,13 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="robots" content="noindex" />
 
-    <!-- Khai báo config.yml -->
-    <link rel="cms-config-url" type="text/yaml" href="/admin/config.yml" />
+    <!-- CHỈNH ĐÚNG: thẻ link YAML cho CMS -->
+    <link href="/admin/config.yml" type="text/yaml" rel="cms-config-url" />
 
     <title>Content Manager</title>
   </head>
   <body>
-    <!-- Nạp Decap CMS từ CDN -->
+    <!-- Nạp Decap CMS từ CDN (ghi rõ @3 để tránh vấn đề semver) -->
     <script src="https://unpkg.com/decap-cms@3/dist/decap-cms.js"></script>
   </body>
 </html>
