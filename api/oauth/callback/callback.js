@@ -3,11 +3,10 @@
 export const config = { runtime: 'nodejs' };
 
 export default async function handler(req, res) {
-  const client_id = process.env.OAUTH_CLIENT_ID;
+  const client_id     = process.env.OAUTH_CLIENT_ID;
   const client_secret = process.env.OAUTH_CLIENT_SECRET;
-  const siteUrl = process.env.SITE_URL;
+  const siteUrl       = process.env.SITE_URL;
 
-  // Guard env
   if (!client_id || !client_secret || !siteUrl) {
     return res.status(500).json({
       error: 'MissingEnv',
@@ -27,19 +26,14 @@ export default async function handler(req, res) {
 
   const redirect_uri = `${siteUrl}/api/oauth/callback`;
 
-  // Đổi "code" lấy access_token từ GitHub
-  const tokenResponse = await fetch(`https://github.com/login/oauth/access_token`, {
+  // Đổi code lấy access_token từ GitHub
+  const tokenResp = await fetch('https://github.com/login/oauth/access_token', {
     method: 'POST',
-    headers: { 'Accept': 'application/json' },
-    body: new URLSearchParams({
-      client_id,
-      client_secret,
-      code,
-      redirect_uri,
-    }),
+    headers: { Accept: 'application/json' },
+    body: new URLSearchParams({ client_id, client_secret, code, redirect_uri }),
   });
 
-  const tokenData = await tokenResponse.json();
+  const tokenData = await tokenResp.json();
 
   if (tokenData.error) {
     return res.status(400).json({
@@ -48,14 +42,9 @@ export default async function handler(req, res) {
     });
   }
 
-  // Decap CMS mong đợi { token: "<access_token>" }
   const token = tokenData.access_token || tokenData.token;
-  if (!token) {
-    return res.status(400).json({ error: 'NoAccessToken', details: tokenData });
-  }
+  if (!token) return res.status(400).json({ error: 'NoAccessToken', details: tokenData });
 
-  // (Tuỳ chọn) CORS nếu auth server khác domain với admin page:
-  // res.setHeader('Access-Control-Allow-Origin', 'https://blog.thien.ac');
-
+  // Decap CMS mong đợi { token: "<access_token>" }
   return res.json({ token });
 }

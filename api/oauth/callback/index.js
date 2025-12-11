@@ -14,8 +14,10 @@ export default function handler(req, res) {
     });
   }
 
+  // Callback đúng với GitHub OAuth App đã cấu hình
   const redirect_uri = `${siteUrl}/api/oauth/callback`;
 
+  // Dấu '&' thật, KHÔNG dùng &amp;
   const githubAuthURL =
     `https://github.com/login/oauth/authorize` +
     `?client_id=${encodeURIComponent(client_id)}` +
