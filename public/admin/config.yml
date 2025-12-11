@@ -8,8 +8,13 @@ backend:
   name: github
   repo: genkun/my-blog
   branch: main
+  auth:
+  client_id: Ov23liLY2lDMV9fcENys
+  scope: repo
   base_url: https://blog.thien.ac
   auth_endpoint: /api/oauth
+  
+
   commit_messages:
     create: "Create {{collection}} \"{{slug}}\""
     update: "Update {{collection}} \"{{slug}}\""
