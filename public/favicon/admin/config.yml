@@ -3,28 +3,17 @@ backend:
   name: github
   repo: <your-github-username>/<your-fuwari-repo>
   branch: main
-  # (Tuỳ chọn) tinh chỉnh nội dung commit khi tạo/sửa/xóa
-  commit_messages:
-    create: "Create {{collection}} \"{{slug}}\""
-    update: "Update {{collection}} \"{{slug}}\""
-    delete: "Delete {{collection}} \"{{slug}}\""
-    uploadMedia: "Upload \"{{path}}\""
-    deleteMedia: "Delete \"{{path}}\""
 
 media_folder: "src/assets/images"
 public_folder: "/src/assets/images"
 
-# Bật workflow biên tập nếu bạn muốn review trước khi publish (khuyên dùng cho nhóm)
-publish_mode: editorial_workflow
-
 collections:
   - name: "blog"
     label: "Bài viết"
-    folder: "src/content/posts" # Fuwari lưu bài tại đây
-    create: true                 # cho phép tạo bài mới
+    folder: "src/content/posts"
+    create: true
     slug: "{{slug}}"
     extension: "md"
-    # KHÔNG đặt `delete: false` -> mặc định UI sẽ hiển thị nút "Delete published entry"
     fields:
       - { label: "Title", name: "title", widget: "string" }
       - { label: "Description", name: "description", widget: "text", required: false }

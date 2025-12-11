@@ -3,11 +3,16 @@
 <html lang="vi">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="robots" content="noindex" />
-    /admin/config.yml
+
+    <!-- CHỈNH ĐIỂM NÀY: Khai báo file cấu hình CMS đúng chuẩn -->
+    <link href="/admin/config.yml" type="text/yaml" rel="cms-config-url" />
+
     <title>Content Manager</title>
   </head>
   <body>
-    https://unpkg.com/decap-cms@^3/dist/decap-cms.js</script>
+    <!-- NẠP APP Decap CMS từ CDN (bản ^3) -->
+    <script src="https://unpkg.com/decap-cms@^3/dist/decap-cms.js"></script>
   </body>
 </html>
