@@ -21,25 +21,23 @@ export default async function handler(req, res) {
   }
 
   const { code, state } = req.query;
-  if (!code) {
-    return res.status(400).json({ error: 'MissingCode', message: 'OAuth "code" is required' });
-  }
+  if (!code) return res.status(400).json({ error: 'MissingCode', message: 'OAuth "code" is required' });
 
-  // Lấy origin từ query hoặc cookie
+  // Lấy origin từ query/cookie
   const cookieHeader     = req.headers.cookie || '';
   const cookieOriginRaw  = (cookieHeader.match(/(?:^|;\s*)oauth_origin=([^;]+)/) || [])[1];
   const originFromCookie = cookieOriginRaw ? decodeURIComponent(cookieOriginRaw) : '';
   const originFromQuery  = (req.query.origin && String(req.query.origin)) || '';
   const targetOrigin     = originFromQuery || originFromCookie || siteUrl;
 
-  // Xác thực state đơn giản
+  // (tuỳ chọn) xác thực state đơn giản
   const cookieStateRaw = (cookieHeader.match(/(?:^|;\s*)oauth_state=([^;]+)/) || [])[1];
   const savedState     = cookieStateRaw ? decodeURIComponent(cookieStateRaw) : '';
   if (!savedState || savedState !== state) {
     console.warn('State mismatch:', { savedState, state });
   }
 
-  // redirect_uri phải khớp với Authorization callback URL trong GitHub OAuth App
+  // redirect_uri phải KHỚP GitHub OAuth App (callback: https://blog.thien.ac/api/oauth/callback)
   const redirect_uri = `${siteUrl}/api/oauth/callback?origin=${encodeURIComponent(targetOrigin)}`;
 
   // 1) Đổi code lấy access_token
@@ -56,21 +54,25 @@ export default async function handler(req, res) {
   }
 
   if (tokenData.error) {
-    return res.status(400).json({
-      error: tokenData.error,
-      description: tokenData.error_description,
-    });
+    return res.status(400).json({ error: tokenData.error, description: tokenData.error_description });
   }
 
   const token = tokenData.access_token || tokenData.token;
   if (!token) return res.status(400).json({ error: 'NoAccessToken', details: tokenData });
 
-  // 2) Chuẩn hoá payload theo format mà Decap chờ
-  const content    = { token, provider: 'github', backend: 'github', state };
-  const msgDecap   = `authorization:github:success:${JSON.stringify(content)}`;
-  const msgNetlify = `netlify-cms-oauth-provider:${JSON.stringify(content)}`; // dự phòng
+  // 2) Chuẩn hoá nhiều FORMAT message mà Decap/Netlify từng dùng
+  const jsonPayload  = JSON.stringify({ token, provider: 'github', backend: 'github', state });
+  const formats = [
+    // format “chuẩn” của Decap v3 (phổ biến)
+    `authorization:github:success:${jsonPayload}`,
+    // dự phòng Netlify CMS OAuth provider (nhiều repo dùng format này)
+    `netlify-cms-oauth-provider:${jsonPayload}`,
+    // một số bản fork/phiên bản cũ dùng token dạng chuỗi sau prefix
+    `authorization:github:success:${token}`,
+    // biến thể ít gặp, thử thêm để bao quát
+    `authorization:github:access_token:${token}`,
+  ];
 
-  // 3) Trả về HTML: postMessage tới cửa sổ cha, KHÔNG tự đóng popup
   const html = `<!doctype html>
 <html lang="vi">
 <head>
@@ -84,52 +86,46 @@ export default async function handler(req, res) {
 </head>
 <body>
   <h1>Đăng nhập GitHub thành công</h1>
-  <p>Mình đã gửi token về cửa sổ CMS. Nếu CMS chưa chuyển, vui lòng kiểm tra Console của trang <code>/admin</code>.</p>
+  <p>Đang gửi token về cửa sổ CMS (nhiều lần để đảm bảo nhận). Mở Console của trang <code>/admin</code> để quan sát.</p>
 
-  <h3>Thông tin gửi đi</h3>
-  <pre id="payload"></pre>
-  <pre id="status"></pre>
+  <h3>origin</h3>
+  <pre>${targetOrigin}</pre>
 
   <script>
     (function () {
       var origin = ${JSON.stringify(targetOrigin)};
-      var msg1 = ${JSON.stringify(msgDecap)};
-      var msg2 = ${JSON.stringify(msgNetlify)};
-      var statusEl = document.getElementById('status');
-      var payloadEl = document.getElementById('payload');
+      var msgs = ${JSON.stringify(formats)};
+      var sendCount = 0;
 
-      payloadEl.textContent = 'origin: ' + origin + '\\n\\n' + msg1;
-
-      function send(target) {
-        try {
-          if (target && typeof target.postMessage === 'function') {
-            target.postMessage(msg1, origin);
-            target.postMessage(msg2, origin);
-            statusEl.textContent = 'Đã gửi postMessage tới ' + origin;
-            return true;
-          }
-        } catch (e) { console.error('postMessage error:', e); statusEl.textContent = 'Lỗi postMessage: ' + e.message; }
-        return false;
+      function sendOnce(useStar) {
+        var tgt = useStar ? '*' : origin;
+        var ok = false;
+        function _send(target) {
+          try {
+            if (target && typeof target.postMessage === 'function') {
+              for (var i=0; i<msgs.length; i++) { target.postMessage(msgs[i], tgt); }
+              ok = true;
+            }
+          } catch (e) { console.error('postMessage error:', e); }
+        }
+        if (window.opener && !window.opener.closed) _send(window.opener);
+        if (!ok && window.parent && window.parent !== window) _send(window.parent);
+        return ok;
       }
 
-      var ok = false;
-      if (window.opener && !window.opener.closed) ok = send(window.opener);
-      if (!ok && window.parent && window.parent !== window) ok = send(window.parent);
+      // Gửi lại nhiều lần trong ~6 giây:
+      // - 6 lần đầu với origin chính xác
+      // - 6 lần sau (nếu cần) với targetOrigin='*' để TEST listener
+      var attempts = 0;
+      var timer = setInterval(function(){
+        attempts++;
+        var useStar = attempts > 6;
+        var ok = sendOnce(useStar);
+        sendCount++;
+        if (attempts >= 12) clearInterval(timer);
+      }, 500);
 
-      // (Tuỳ chọn TEST) Nếu vẫn không được, thử '*' để kiểm tra listener — nên bỏ khi production
-      if (!ok) {
-        try {
-          if (window.opener && !window.opener.closed) {
-            window.opener.postMessage(msg1, '*'); window.opener.postMessage(msg2, '*'); ok = true;
-            statusEl.textContent += '\\nĐã thử gửi với targetOrigin=* (chỉ để test).';
-          } else if (window.parent && window.parent !== window) {
-            window.parent.postMessage(msg1, '*'); window.parent.postMessage(msg2, '*'); ok = true;
-            statusEl.textContent += '\\nĐã thử gửi với targetOrigin=* (chỉ để test).';
-          }
-        } catch (e) {}
-      }
-
-      // KHÔNG tự đóng popup nữa – để người dùng xem trạng thái/console.
+      // KHÔNG tự đóng popup – để bạn kiểm tra trực tiếp.
     })();
   </script>
 </body>
