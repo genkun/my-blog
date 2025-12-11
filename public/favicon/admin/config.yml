@@ -1,0 +1,41 @@
+
+backend:
+  name: github
+  repo: <your-github-username>/<your-fuwari-repo>
+  branch: main
+  # (Tuỳ chọn) tinh chỉnh nội dung commit khi tạo/sửa/xóa
+  commit_messages:
+    create: "Create {{collection}} \"{{slug}}\""
+    update: "Update {{collection}} \"{{slug}}\""
+    delete: "Delete {{collection}} \"{{slug}}\""
+    uploadMedia: "Upload \"{{path}}\""
+    deleteMedia: "Delete \"{{path}}\""
+
+media_folder: "src/assets/images"
+public_folder: "/src/assets/images"
+
+# Bật workflow biên tập nếu bạn muốn review trước khi publish (khuyên dùng cho nhóm)
+publish_mode: editorial_workflow
+
+collections:
+  - name: "blog"
+    label: "Bài viết"
+    folder: "src/content/posts" # Fuwari lưu bài tại đây
+    create: true                 # cho phép tạo bài mới
+    slug: "{{slug}}"
+    extension: "md"
+    # KHÔNG đặt `delete: false` -> mặc định UI sẽ hiển thị nút "Delete published entry"
+    fields:
+      - { label: "Title", name: "title", widget: "string" }
+      - { label: "Description", name: "description", widget: "text", required: false }
+      - { label: "Publish Date", name: "published", widget: "datetime", format: "YYYY-MM-DD" }
+      - { label: "Updated", name: "updated", widget: "datetime", required: false, format: "YYYY-MM-DD" }
+      - { label: "Cover Image", name: "image", widget: "image", required: false }
+      - { label: "Tags", name: "tags", widget: "list", required: false }
+      - { label: "Category", name: "category", widget: "string", required: false }
+      - { label: "Author", name: "author", widget: "string", default: "hopthurac" }
+      - { label: "Slug", name: "slug", widget: "string" }
+      - { label: "Draft", name: "draft", widget: "boolean", default: false }
+      - { label: "Lang", name: "lang", widget: "string", default: "vi" }
+      - { label: "Canonical URL", name: "canonical", widget: "string", required: false }
+      - { label: "Body", name: "body", widget: "markdown" }
