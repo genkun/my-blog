@@ -1,59 +1,32 @@
 
+// pages/api/oauth/index.js
+export const config = { runtime: 'nodejs' };
+
 export default async function handler(req, res) {
   const client_id = process.env.OAUTH_CLIENT_ID;
-  const client_secret = process.env.OAUTH_CLIENT_SECRET;
   const siteUrl = process.env.SITE_URL;
 
-  // Validate env sớm để không tạo URL sai
-  if (!client_id || !client_secret || !siteUrl) {
+  // Validate env
+  if (!client_id || !siteUrl) {
     return res.status(500).json({
       error: 'MissingEnv',
-      message: 'Required env vars are missing',
+      message: 'Required env vars are missing in /api/oauth',
       missing: {
         OAUTH_CLIENT_ID: !client_id,
-        OAUTH_CLIENT_SECRET: !client_secret,
         SITE_URL: !siteUrl,
       },
     });
   }
 
-  // Nếu dùng chung endpoint cho authorize + callback
-  const redirect_uri = `${siteUrl}/api/oauth`;
+  // redirect_uri trỏ đến endpoint callback riêng
+  const redirect_uri = `${siteUrl}/api/oauth/callback`;
 
-  const { code } = req.query;
+  const githubAuthURL =
+    `https://github.com/login/oauth/authorize` +
+    `?client_id=${encodeURIComponent(client_id)}` +
+    `&scope=${encodeURIComponent('repo,user')}` +
+    `&redirect_uri=${encodeURIComponent(redirect_uri)}`;
 
-  // Chưa có "code" -> chuyển hướng tới GitHub OAuth
-  if (!code) {
-    const githubAuthURL =
-      `https://github.com/login/oauth/authorize` +
-      `?client_id=${encodeURIComponent(client_id)}` +
-      `&scope=${encodeURIComponent('repo,user')}` +
-      `&redirect_uri=${encodeURIComponent(redirect_uri)}`;
-    return res.redirect(githubAuthURL);
-  }
-
-  // Có "code" -> đổi lấy access token
-  const tokenResponse = await fetch(`https://github.com/login/oauth/access_token`, {
-    method: 'POST',
-    headers: { 'Accept': 'application/json' },
-    body: new URLSearchParams({
-      client_id,
-      client_secret,
-      code,
-      redirect_uri,
-    }),
-  });
-
-  const tokenData = await tokenResponse.json();
-
-  if (tokenData.error) {
-    return res.status(400).json({
-      error: tokenData.error,
-      description: tokenData.error_description,
-    });
-  }
-
-  // Chuẩn hóa response theo kỳ vọng của Decap CMS
-  const token = tokenData.access_token || tokenData.token;
-  return res.json(token ? { token } : tokenData);
+  // Chuyển hướng người dùng tới GitHub để approve
+  return res.redirect(githubAuthURL);
 }
