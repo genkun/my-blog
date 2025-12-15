@@ -186,6 +186,8 @@ async function run() {
             if (!/title:\s*giáo trình tiếng trung cho người việt/.test(content)) throw new Error('missing title in frontmatter');
             if (!/slug:\s*"?[-a-z0-9]+"?/.test(content)) throw new Error('missing slug');
             if (!/author:\s*"?[\w-]+"?/.test(content)) throw new Error('missing author');
+            if (!/draft:\s*false/.test(content)) throw new Error('post not published (draft set)');
+            if (!/published:\s*\d{4}-\d{2}-\d{2}/.test(content)) throw new Error('missing published date');
           } catch (e) { throw e; }
           return { ok: true, status: 201, json: async () => ({ content: { path: 'src/content/posts/giao-trinh-tieng-trung-cho-nguoi-viet.md', html_url: 'https://github' } }) };
         }

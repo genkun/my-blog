@@ -75,3 +75,6 @@ Xử lý lỗi
 AI-generated posts
 
 - Bây giờ khi máy chủ commit bài viết được tạo bởi AI, server sẽ đảm bảo file được lưu trong `src/content/posts/<slug>.md` với frontmatter đầy đủ cho Decap CMS (`title`, `description`, `published`, `updated`, `image`, `tags`, `category`, `author`, `slug`, `draft`, `lang`, `canonical`) để bài vừa tạo có thể hiển thị đúng trong Admin → New Post.
+
+- Khi server commit thành công (ví dụ `commit: true` hoặc `auto` generation), bài viết sẽ được "publish now": `draft: false` và `published` được đặt theo ngày hiện tại, do đó bài sẽ xuất hiện ngay trong **Collections** của Decap CMS.
+- Lưu ý: mặc định `commit` là `true` trong endpoint, tức là nếu bạn không chọn hủy commit (hoặc gọi với `commit: false`), bài sẽ được commit và publish tự động.
