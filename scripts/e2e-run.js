@@ -112,6 +112,37 @@ async function run() {
   assert.strictEqual(res._status, 403);
   console.log('✓ admin secret enforced');
 
+  // Test 7: real-world scenario - generate with explicit Vietnamese title (no commit)
+  delete process.env.AI_ADMIN_SECRET;
+  global.fetch = mockFetchFactory([
+    { url: 'https://api.openai.com/v1/chat/completions', response: () => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: '# giáo trình tiếng trung cho người việt\n\nNội dung mẫu do AI tạo.' } }] }) }) }
+  ]);
+  res = makeRes();
+  await genHandler(makeReq('POST', { title: 'giáo trình tiếng trung cho người việt', prompt: 'viết một giáo trình ngắn cho người mới bắt đầu', commit: false }), res);
+  assert.strictEqual(res._status, 200);
+  assert.strictEqual(res._body.ok, true);
+  assert.strictEqual(res._body.committed, false);
+  assert(res._body.content && res._body.content.indexOf('giáo trình tiếng trung cho người việt') !== -1);
+  console.log('✓ scenario: generate Vietnamese title (no commit)');
+
+  // Test 8: same scenario but with commit (mock GH API)
+  global.fetch = mockFetchFactory([
+    // body generation
+    { url: 'https://api.openai.com/v1/chat/completions', response: () => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: '# giáo trình tiếng trung cho người việt\n\nNội dung đầy đủ.' } }] }) }) },
+    // check file - not found
+    { match: (u) => u.indexOf('https://api.github.com/repos/') === 0 && u.indexOf('/contents/') !== -1 && u.indexOf('?ref=') !== -1, response: () => ({ ok: false, status: 404, json: async () => ({}) }) },
+    // create post file
+    { match: (u, o) => u.indexOf('https://api.github.com/repos/') === 0 && o && o.method === 'PUT' && u.indexOf('/contents/src/content/posts') !== -1, response: () => ({ ok: true, status: 201, json: async () => ({ content: { path: 'src/content/posts/giao-trinh-tieng-trung-cho-nguoi-viet.md', html_url: 'https://github' } }) }) }
+  ]);
+  process.env.AI_GITHUB_TOKEN = 'testtoken';
+  res = makeRes();
+  await genHandler(makeReq('POST', { title: 'giáo trình tiếng trung cho người việt', prompt: 'viết một giáo trình ngắn cho người mới bắt đầu', commit: true }), res);
+  assert.strictEqual(res._status, 200);
+  assert.strictEqual(res._body.ok, true);
+  assert.strictEqual(res._body.committed, true);
+  assert.strictEqual(res._body.slug, 'giao-trinh-tieng-trung-cho-nguoi-viet');
+  console.log('✓ scenario: generate Vietnamese title (with commit)');
+
   console.log('All E2E tests passed');
 }
 

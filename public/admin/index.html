@@ -413,7 +413,9 @@
             var title = opts.title || prompt('Tiêu đề bài viết (bắt buộc):');
             if (!title) return alert('Tiêu đề bắt buộc');
             var promptText = typeof opts.prompt !== 'undefined' ? opts.prompt : prompt('Mô tả ngắn hoặc ghi chú cho AI (tuỳ chọn):', 'Viết một bài hướng dẫn ngắn về ...');
-            var commit = typeof opts.commit === 'boolean' ? opts.commit : true;
+            // Ask the user before committing by default. If caller passed `commit` explicitly,
+            // honor it; otherwise ask for confirmation so the post isn't published unexpectedly.
+            var commit = typeof opts.commit === 'boolean' ? opts.commit : confirm('Publish ngay (commit) vào repository? Bấm OK để publish, Cancel để chỉ tạo nội dung (không commit)');
             aiBtn.disabled = true; aiBtn.textContent = 'Đang tạo...';
             try {
               var resp = await fetch('/api/ai/generate', {
@@ -441,10 +443,28 @@
                 setTimeout(function () { window.location.reload(); }, 500);
               } else {
                 var content = json.content || '';
-                var ok = confirm('Server could not commit automatically. Bấm OK để sao chép nội dung vào clipboard so bạn có thể dán vào bài mới.');
-                if (ok) {
-                  await navigator.clipboard.writeText(content);
-                  alert('Nội dung đã được sao chép vào clipboard. Vào Admin -> New Post và dán nội dung.');
+                // If the user chose not to commit (commit === false), treat the response as a draft
+                // and copy the generated content to clipboard so they can paste it into a new post.
+                if (commit === false) {
+                  try {
+                    await navigator.clipboard.writeText(content);
+                    alert('Bản nháp đã được sao chép vào clipboard. Vào Admin -> New Post và dán nội dung.');
+                    try {
+                      if (opts && opts.autoOpenEditor && json.slug) {
+                        var url = '/admin/#/collections/blog/new?slug=' + encodeURIComponent(json.slug);
+                        window.location.href = url;
+                        return json;
+                      }
+                    } catch (e) { /* ignore */ }
+                  } catch (e) {
+                    alert('Không thể sao chép vào clipboard. Vui lòng sao chép thủ công.');
+                  }
+                } else {
+                  var ok = confirm('Server could not commit automatically. Bấm OK để sao chép nội dung vào clipboard so bạn có thể dán vào bài mới.');
+                  if (ok) {
+                    await navigator.clipboard.writeText(content);
+                    alert('Nội dung đã được sao chép vào clipboard. Vào Admin -> New Post và dán nội dung.');
+                  }
                 }
               }
               return json;
