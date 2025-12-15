@@ -11,14 +11,48 @@
     <link rel="cms-config-url" type="text/yaml" href="/admin/config.yml" />
 
     <!-- Listener nhận token từ popup OAuth và điều hướng vào dashboard -->
-  
+    <script>
+      (function () {
+        var allowedOrigin = window.location.origin;
 
+        window.addEventListener('message', function (event) {
+          if (event.origin !== allowedOrigin) return;
+          var data = String(event.data || '');
+          var P1 = 'authorization:github:success:';
+          var P2 = 'netlify-cms-oauth-provider:';
+          var P3 = 'authorization:github:access_token:';
+
+          if (data.startsWith(P1) || data.startsWith(P2)) {
+            var s = data.indexOf('{');
+            if (s >= 0) {
+              var payload = JSON.parse(data.slice(s));
+              if (window.CMS && typeof window.CMS.authCallback === 'function') {
+                window.CMS.authCallback(payload);
+              } else {
+                localStorage.setItem('decap_oauth_payload', JSON.stringify(payload));
+              }
+              window.location.replace('/admin/#/'); // đổi path nếu dashboard của bạn khác
+            }
+          } else if (data.startsWith(P3) || (data.startsWith(P1) && data.indexOf('{') === -1)) {
+            var token = data.substring(data.lastIndexOf(':') + 1).trim();
+            localStorage.setItem('decap_token', token);
+            if (window.CMS && typeof window.CMS.authCallback === 'function') {
+              window.CMS.authCallback({ token, provider: 'github', backend: 'github' });
+            }
+            window.location.replace('/admin/#/');
+          }
+        }, false);
+      })();
+    </script>
+ </head>
+  <body>
     <!-- Nạp Decap CMS v3 từ CDN -->
     <script src="https://unpkg.com/decap-cms@3/dist/decap-cms.js"></script>
     <!-- Nếu muốn tự chủ động khởi tạo, có thể bật MANUAL_INIT -->
     <!-- <script>window.CMS_MANUAL_INIT = true;</script> -->
-  </head>
-  <body>
+ 
+ 
     <!-- Bạn có thể thêm nút "Đăng nhập GitHub" nếu muốn mở popup -->
     <!-- <button onclick="window.open('/api/oauth/index?origin='+encodeURIComponent(window.location.origin),'github_oauth','width=800,height=700')">Đăng nhập    <!-- <button onclick="window.open('/api/oauth/index?origin='+encodeURIComponent(window.location.origin),'github_oauth','width=800,height=700')">Đăng nhập GitHub</button> -->
   </body>
+</html>

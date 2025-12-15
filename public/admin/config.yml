@@ -29,7 +29,7 @@ commit_messages:
 
 # Lưu ảnh trong repo & dùng ảnh trên site
 media_folder: "src/assets/images"
-public_folder: "/assets/images"   # đổi lại nếu site thực sự dùng /src/assets/images
+public_folder: "/src/assets/images"   # đổi lại nếu site thực sự dùng /src/assets/images
 
 # (Khuyên dùng cho nhóm) thêm workflow nháp/duyệt/xuất bản bằng PR
 publish_mode: editorial_workflow
