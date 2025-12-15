@@ -327,9 +327,12 @@
     </script>
 
     <!-- (Tuỳ chọn) Nút mở popup OAuth để đăng nhập GitHub -->
-    <div style="margin: 1rem;">
+    <div style="margin: 1rem; display:flex; gap:8px; align-items:center;">
       <button id="gh-login" type="button" style="padding: .5rem .75rem; font-size: 14px;">
         Đăng nhập GitHub
+      </button>
+      <button id="ai-create" type="button" title="Yêu cầu OPENAI_API_KEY trên server; nếu có AI_GITHUB_TOKEN thì sẽ commit vào repo" style="padding: .5rem .75rem; font-size: 14px;">
+        Tạo bài bằng AI
       </button>
     </div>
 
@@ -396,7 +399,55 @@
           if (!e || (e.key !== 'decap-cms-user' && e.key !== 'decap_oauth_payload' && e.key !== 'decap_token')) return;
           updateLoginButtonVisibility();
         });
-      })();
+        // AI create button handler
+        (function () {
+          var aiBtn = document.getElementById('ai-create');
+          if (!aiBtn) return;
+
+          async function createPost() {
+            try {
+              var title = prompt('Tiêu đề bài viết (bắt buộc):');
+              if (!title) return alert('Tiêu đề bắt buộc');
+              var promptText = prompt('Mô tả ngắn hoặc ghi chú cho AI (tuỳ chọn):', 'Viết một bài hướng dẫn ngắn về ...');
+              aiBtn.disabled = true; aiBtn.textContent = 'Đang tạo...';
+
+              var resp = await fetch('/api/ai/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: title, prompt: promptText, commit: true })
+              });
+
+              var json = await resp.json();
+              if (!json.ok) {
+                alert('Lỗi tạo bài: ' + (json.error || JSON.stringify(json)));
+                return;
+              }
+
+              if (json.committed) {
+                alert('Bài đã được tạo: ' + (json.path || json.html_url || '')); 
+                // Hide login button and optionally reload CMS to show new post
+                try { document.getElementById('gh-login') && (document.getElementById('gh-login').style.display = 'none'); } catch (e) {}
+                // Try to reload so CMS sees new file
+                setTimeout(function () { window.location.reload(); }, 500);
+              } else {
+                // Not committed (no token) — show the content so user can copy
+                var content = json.content || '';
+                var ok = confirm('Server could not commit automatically. Bấm OK để sao chép nội dung vào clipboard so bạn có thể dán vào bài mới.');
+                if (ok) {
+                  await navigator.clipboard.writeText(content);
+                  alert('Nội dung đã được sao chép vào clipboard. Vào Admin -> New Post và dán nội dung.');
+                }
+              }
+            } catch (e) {
+              console.error('AI create failed', e);
+              alert('Lỗi khi tạo bài bằng AI: ' + e.message);
+            } finally {
+              aiBtn.disabled = false; aiBtn.textContent = 'Tạo bài bằng AI';
+            }
+          }
+
+          aiBtn.addEventListener('click', createPost);
+        })();      })();
     </script>
 
     <!-- ✅ NẠP Decap CMS v3 từ CDN: BẮT BUỘC nằm trong <body> -->

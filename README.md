@@ -53,6 +53,10 @@ A static blog template built with [Astro](https://astro.build).
 
 - See [docs/admin-oauth.md](docs/admin-oauth.md) for instructions to set up GitHub OAuth (required env vars, callback URL, local-dev notes).
 
+AI Post Generation:
+
+- See [docs/ai.md](docs/ai.md) for instructions on how to enable the AI post creation endpoint and required environment variables (OpenAI key, optional GitHub token).
+
 ## 📝 Frontmatter of Posts
 
 ```yaml
