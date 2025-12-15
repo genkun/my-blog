@@ -404,33 +404,32 @@
           var aiBtn = document.getElementById('ai-create');
           if (!aiBtn) return;
 
-          async function createPost() {
+          // Expose a programmable create function so other UI can call it
+          window._decap_ai_create = async function (opts) {
+            opts = opts || {};
+            var title = opts.title || prompt('Tiêu đề bài viết (bắt buộc):');
+            if (!title) return alert('Tiêu đề bắt buộc');
+            var promptText = typeof opts.prompt !== 'undefined' ? opts.prompt : prompt('Mô tả ngắn hoặc ghi chú cho AI (tuỳ chọn):', 'Viết một bài hướng dẫn ngắn về ...');
+            var commit = typeof opts.commit === 'boolean' ? opts.commit : true;
+            aiBtn.disabled = true; aiBtn.textContent = 'Đang tạo...';
             try {
-              var title = prompt('Tiêu đề bài viết (bắt buộc):');
-              if (!title) return alert('Tiêu đề bắt buộc');
-              var promptText = prompt('Mô tả ngắn hoặc ghi chú cho AI (tuỳ chọn):', 'Viết một bài hướng dẫn ngắn về ...');
-              aiBtn.disabled = true; aiBtn.textContent = 'Đang tạo...';
-
               var resp = await fetch('/api/ai/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title: title, prompt: promptText, commit: true })
+                body: JSON.stringify({ title: title, prompt: promptText, commit: commit })
               });
 
               var json = await resp.json();
               if (!json.ok) {
                 alert('Lỗi tạo bài: ' + (json.error || JSON.stringify(json)));
-                return;
+                return json;
               }
 
               if (json.committed) {
-                alert('Bài đã được tạo: ' + (json.path || json.html_url || '')); 
-                // Hide login button and optionally reload CMS to show new post
+                alert('Bài đã được tạo: ' + (json.path || json.html_url || ''));
                 try { document.getElementById('gh-login') && (document.getElementById('gh-login').style.display = 'none'); } catch (e) {}
-                // Try to reload so CMS sees new file
                 setTimeout(function () { window.location.reload(); }, 500);
               } else {
-                // Not committed (no token) — show the content so user can copy
                 var content = json.content || '';
                 var ok = confirm('Server could not commit automatically. Bấm OK để sao chép nội dung vào clipboard so bạn có thể dán vào bài mới.');
                 if (ok) {
@@ -438,15 +437,50 @@
                   alert('Nội dung đã được sao chép vào clipboard. Vào Admin -> New Post và dán nội dung.');
                 }
               }
+              return json;
             } catch (e) {
               console.error('AI create failed', e);
               alert('Lỗi khi tạo bài bằng AI: ' + e.message);
+              return { ok: false, error: e.message };
             } finally {
               aiBtn.disabled = false; aiBtn.textContent = 'Tạo bài bằng AI';
             }
+          };
+
+          aiBtn.addEventListener('click', function () { window._decap_ai_create(); });
+
+          // Floating quick-access AI button (visible when logged in)
+          function createFloatingAi() {
+            try {
+              var floatBtn = document.createElement('button');
+              floatBtn.id = 'ai-create-float';
+              floatBtn.title = 'Tạo bài bằng AI';
+              floatBtn.textContent = 'Tạo AI';
+              floatBtn.style.position = 'fixed';
+              floatBtn.style.right = '12px';
+              floatBtn.style.bottom = '72px';
+              floatBtn.style.zIndex = 99998;
+              floatBtn.style.padding = '.5rem .65rem';
+              floatBtn.style.borderRadius = '6px';
+              floatBtn.style.background = '#0b7285';
+              floatBtn.style.color = '#fff';
+              floatBtn.style.border = 'none';
+              floatBtn.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
+              floatBtn.style.cursor = 'pointer';
+              floatBtn.addEventListener('click', function () { window._decap_ai_create(); });
+              document.body.appendChild(floatBtn);
+
+              function refresh() {
+                var user = localStorage.getItem('decap-cms-user');
+                floatBtn.style.display = user ? 'block' : 'none';
+              }
+              refresh();
+              window.addEventListener('storage', refresh);
+            } catch (e) { console.warn('Could not create floating AI button', e); }
           }
 
-          aiBtn.addEventListener('click', createPost);
+          if (document.readyState === 'complete' || document.readyState === 'interactive') createFloatingAi();
+          else document.addEventListener('DOMContentLoaded', createFloatingAi);
         })();      })();
     </script>
 
