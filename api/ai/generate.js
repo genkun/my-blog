@@ -416,16 +416,19 @@ export default async function handler(req, res) {
     // If commit not requested or no token, return content only
     if (!commit || !ghToken) {
       const draftContent = composeMarkdown(slug);
+      console.warn('Skipping commit: commit=' + commit + ', ghToken=' + (ghToken ? 'present' : 'missing'));
       return res.json({ ok: true, committed: false, content: draftContent, generated: generated });
     }
 
     // Use a timestamp suffix to avoid filename collisions and unnecessary GitHub checks
     const filename = `src/content/posts/${slug}-${Date.now()}.md`;
+    console.log('Creating post:', { slug, filename, ghToken: ghToken ? 'present' : 'missing', branch });
 
     // Now that we've finalized a unique filename, compute slug from filename and include it in frontmatter
     const createOnMain = async () => {
       const createUrl = `https://api.github.com/repos/${owner}/${name}/contents/${encodeURI(filename)}`;
       const markdownToWrite = composeMarkdown(filename.split('/').pop().replace(/\.md$/, ''));
+      console.log('Creating on main:', { createUrl: createUrl.substring(0, 80) + '...', filename });
       return await fetchJson(createUrl, {
         method: 'PUT',
         headers: { Authorization: `token ${ghToken}`, 'Content-Type': 'application/json', 'User-Agent': 'ai-generate' },
@@ -478,8 +481,9 @@ export default async function handler(req, res) {
     }
 
     if (!createResp.ok) {
-      console.error('Failed to create file', createResp.status, createResp.body);
-      return res.status(500).json({ ok: false, error: 'create_failed', details: createResp.body });
+      console.error('Failed to create file', createResp.status, JSON.stringify(createResp.body));
+      const errorMsg = createResp.body && createResp.body.message ? createResp.body.message : `API Error: ${createResp.status}`;
+      return res.status(500).json({ ok: false, error: 'create_failed', message: errorMsg, details: createResp.body });
     }
 
     // compute slug from filename
@@ -505,6 +509,6 @@ export default async function handler(req, res) {
     return res.json({ ok: true, committed: true, path: createdPath, html_url: createResp.body.content.html_url, slug: slugOut, generated: generated, images: uploadedImages, deploy_triggered: deployTriggered });
   } catch (err) {
     console.error('AI generate handler error', err);
-    res.status(500).json({ error: 'server_error', message: err.message || String(err) });
+    res.status(500).json({ error: 'server_error', message: err.message || String(err), stack: process.env.NODE_ENV === 'development' ? err.stack : undefined });
   }
 }
