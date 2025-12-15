@@ -8,68 +8,105 @@
     <title>Content Manager</title>
 
     <!-- KHAI BÁO CẤU HÌNH CMS: PHẢI LÀ THẺ <link> đúng thuộc tính -->
-    <link
-      href="/admin/config.yml"
-      type="text/yaml"
-      rel="cms-config-url"
-    />
+    <link href="/admin/config.yml" type="text/yaml" rel="cms-config-url" />
+
+    <!-- Listener nhận token từ popup OAuth và chuyển hướng vào dashboard -->
+    <script>
+      (function () {
+        // Chỉ nhận từ đúng origin của site (khớp với origin mà callback đang gửi)
+        var allowedOrigin = window.location.origin;
+
+        /**
+         * Tiếp nhận các format mà callback.js đang postMessage:
+         * - 'authorization:github:success:{...}' (Decap v3 "chuẩn")
+         * - 'netlify-cms-oauth-provider:{...}'   (provider cũ)
+         * - 'authorization:github:success:<token>' (chuỗi token)
+         * - 'authorization:github:access_token:<token>'
+         *
+         * Sau khi nhận, gọi CMS.authCallback(payload) nếu có,
+         * rồi điều hướng vào dashboard.
+         */
+        function onOAuthMessage(event) {
+          try {
+            if (event.origin !== allowedOrigin) {
+              // Nếu đang debug có thể tạm chấp nhận '*', nhưng trong prod nên giữ chặt origin.
+              console.warn('[OAuth] Bỏ qua message từ origin lạ:', event.origin);
+              return;
+            }
+
+            var data = String(event.data || '');
+            var P_JSON_1 = 'authorization:github:success:';
+            var P_JSON_2 = 'netlify-cms-oauth-provider:';
+            var P_TOKEN_1 = 'authorization:github:access_token:';
+            var P_TOKEN_2 = 'authorization:github:success:'; // đôi khi gửi thẳng token sau prefix
+
+            if (data.startsWith(P_JSON_1) || data.startsWith(P_JSON_2)) {
+              // Dạng JSON payload
+              var jsonStart = data.indexOf('{');
+              if (jsonStart < 0) {
+                console.warn('[OAuth] Không thấy JSON trong payload:', data);
+                return;
+              }
+              var jsonStr = data.slice(jsonStart);
+              var payload = JSON.parse(jsonStr);
+
+              // Nếu Decap đã sẵn sàng, thông báo kết quả đăng nhập cho CMS
+              if (window.CMS && typeof window.CMS.authCallback === 'function') {
+                window.CMS.authCallback(payload);
+              } else {
+                // Dự phòng: lưu payload để CMS đọc sau khi khởi tạo
+                localStorage.setItem('decap_oauth_payload', JSON.stringify(payload));
+              }
+
+              // Điều hướng vào dashboard (đổi đường dẫn cho phù hợp cấu trúc của bạn)
+              // Decap dùng hash-router, thường vào /admin/#/ hoặc /admin/#/collections
+              window.location.replace('/admin/#/');
+
+            } else if (data.startsWith(P_TOKEN_1) || (data.startsWith(P_TOKEN_2) && data.indexOf('{') === -1)) {
+              // Dạng token chuỗi
+              var token = data.substring(data.lastIndexOf(':') + 1).trim();
+              if (!token) {
+                console.warn('[OAuth] Token chuỗi rỗng:', data);
+                return;
+              }
+
+              // Nhiều setup tự đọc token từ payload; dự phòng ta lưu lại
+              localStorage.setItem('decap_token', token);
+
+              // Nếu CMS có callback, gửi cấu trúc JSON tối giản
+              if (window.CMS && typeof window.CMS.authCallback === 'function') {
+                window.CMS.authCallback({ token, provider: 'github', backend: 'github' });
+              }
+
+              window.location.replace('/admin/#/');
+            } else {
+              // Không khớp format, ghi log để theo dõi
+              console.log('[OAuth] Message không khớp format:', data);
+            }
+          } catch (e) {
+            console.error('[OAuth] Lỗi xử lý message:', e);
+          }
+        }
+
+        // Gắn listener SỚM trước khi nạp Decap
+        window.addEventListener('message', onOAuthMessage, false);
+      })();
+    </script>
+
+    <!-- (Tùy chọn) Nếu bạn muốn tự điều khiển khởi tạo, bật MANUAL_INIT rồi gọi CMS.init() sau -->
+    <!-- <script>window.CMS_MANUAL_INIT = true;</script> -->
   </head>
 
   <body>
-    
-<script>
-  (function () {
-    // Chỉ nhận message từ đúng origin của site
-    var allowedOrigin = window.location.origin;
-
-    // Gắn listener sớm (trước khi mở popup)
-    window.addEventListener('message', function (event) {
-      try {
-        if (event.origin !== allowedOrigin) {
-          console.warn('Bỏ qua message từ origin lạ:', event.origin);
-          return;
-        }
-
-        var data = String(event.data || '');
-        // 4 format callback hiện có
-        var prefix1 = 'authorization:github:success:';
-        var prefix2 = 'netlify-cms-oauth-provider:';
-        var prefix3 = 'authorization:github:access_token:';
-
-        if (data.startsWith(prefix1) || data.startsWith(prefix2)) {
-          // Dạng JSON payload
-          var jsonStr = data.substring(data.indexOf('{'));
-          var payload = JSON.parse(jsonStr);
-          console.log('[OAuth] Nhận JSON payload:', payload);
-
-          // Ví dụ: lưu token vào localStorage cho Decap CMS (tuỳ biến theo CMS của bạn)
-          localStorage.setItem('decap_oauth', JSON.stringify(payload));
-
-          // Nếu trang admin có hàm xử lý đăng nhập → gọi nó ở đây
-          // window.CMS && CMS.authCallback && CMS.authCallback(payload);
-
-          alert('Đăng nhập GitHub hoàn tất!');
-          // Nếu popup vẫn mở, callback có thể tự đóng: window.close();
-        } else if (data.startsWith(prefix3) || data.startsWith(prefix1 + 'ghp_')) {
-          // Dạng chỉ có token chuỗi
-          var token = data.substring(data.lastIndexOf(':') + 1);
-          console.log('[OAuth] Nhận token chuỗi:', token);
-
-          localStorage.setItem('decap_token', token);
-          alert('Đăng nhập GitHub hoàn tất (token chuỗi)!');
-          // window.close();
-        } else {
-          console.log('Message không khớp format mong đợi:', data);
-        }
-      } catch (e) {
-        console.error('Lỗi parse message:', e);
-      }
-    }, false);
-  })();
-</script>
-``
-
     <!-- NẠP ỨNG DỤNG Decap CMS TỪ CDN (ghi rõ phiên bản @3) -->
     <script src="https://unpkg.com/decap-cms@3/dist/decap-cms.js"></script>
+
+    <!-- Nếu bật MANUAL_INIT ở trên, gọi init sau khi script CMS đã sẵn sàng -->
+    <!--
+    <script>
+      if (window.CMS_MANUAL_INIT) {
+        // CMS.init(); // thường không cần truyền gì thêm vì đã có <link rel="cms-config-url">
+      }
+    </script>
+       -->
   </body>
-</html>
