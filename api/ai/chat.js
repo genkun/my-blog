@@ -41,7 +41,13 @@ export default async function handler(req, res) {
       msgs = [{ role: 'system', content: system }].concat(msgs);
     }
 
-    const reply = await callOpenAI(msgs, process.env.OPENAI_MODEL);
+    let reply;
+    try {
+      reply = await callOpenAI(msgs, process.env.OPENAI_MODEL);
+    } catch (e) {
+      console.error('OpenAI call failed in /api/ai/chat', e && (e.message || e));
+      return res.status(502).json({ ok: false, error: 'upstream_error', message: e.message || String(e) });
+    }
     return res.json({ ok: true, reply });
   } catch (err) {
     console.error('ai/chat error', err && (err.stack || err.message || err));

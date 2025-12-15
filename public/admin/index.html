@@ -574,13 +574,19 @@
                 if (secret) body.secret = secret;
                 var rsp = await fetch('/api/ai/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
                 var j = await rsp.json();
-                if (!j.ok) throw new Error(j.error || j.message || 'AI error');
+                if (!j.ok) {
+                  popLastAi();
+                  appendChat('AI', 'Lỗi: ' + (j.error || j.message || 'AI returned error'));
+                  return;
+                }
                 popLastAi();
                 appendChat('AI', j.reply);
               } catch (e) {
                 popLastAi();
                 appendChat('AI', 'Lỗi: ' + (e.message || e));
               }
+              // always scroll messages into view
+              document.getElementById('ai-chat-messages').scrollTop = document.getElementById('ai-chat-messages').scrollHeight;
             });
 
             document.getElementById('ai-chat-exec').addEventListener('click', async function () {

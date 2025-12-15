@@ -79,12 +79,54 @@ async function composePostWithOpenAI(opts = {}) {
   const json = await res.json();
   if (json && json.choices && json.choices[0] && json.choices[0].message) {
     const txt = json.choices[0].message.content;
+    // Try strict JSON first
     try { return JSON.parse(txt); } catch (e) {
-      // try to extract JSON substring
+      // Attempt to extract JSON substring
       const start = txt.indexOf('{');
       const end = txt.lastIndexOf('}');
       if (start >= 0 && end >= 0) {
         try { return JSON.parse(txt.slice(start, end+1)); } catch (e2) { /* fallthrough */ }
+      }
+
+      // Heuristic parsing when JSON isn't returned: try to extract title/desc/body
+      try {
+        const lines = txt.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+        let title = '';
+        let description = '';
+        let body = '';
+        const images = [];
+        const videos = [];
+
+        // Look for common labels
+        for (let i = 0; i < lines.length; i++) {
+          const l = lines[i];
+          if (!title && /^title[:\-]/i.test(l)) { title = l.split(/[:\-]/).slice(1).join(':').trim(); continue; }
+          if (!title && /^#\s+/.test(l)) { title = l.replace(/^#\s+/, '').trim(); continue; }
+          if (!description && /^description[:\-]/i.test(l)) { description = l.split(/[:\-]/).slice(1).join(':').trim(); continue; }
+          if (/^image[:\-]/i.test(l) || /^images?:/i.test(l)) {
+            // collect subsequent lines starting with - or * or just URLs
+            for (let j = i+1; j < Math.min(lines.length, i+6); j++) {
+              const cand = lines[j];
+              if (/^[-*]/.test(cand) || /https?:\/\//.test(cand) || cand.length>10) images.push({ prompt: cand.replace(/^[-*]\s*/, '') });
+            }
+          }
+        }
+
+        // If no title found, take first non-heading line as title candidate
+        if (!title && lines.length) title = lines[0].slice(0, 80);
+
+        // body: try to find a paragraph after a blank line or after a 'Body' label
+        const bodyIdx = lines.findIndex(l => /^body[:\-]/i.test(l));
+        if (bodyIdx >= 0) { body = lines.slice(bodyIdx+1).join('\n\n'); }
+        else {
+          // if multiple paragraphs, take rest as body
+          if (lines.length > 2) body = lines.slice(1).join('\n\n');
+          else body = lines.join('\n\n');
+        }
+
+        return { title: title || '', description: description || '', body: body || '', images, videos };
+      } catch (e3) {
+        console.warn('Heuristic parse failed', e3 && e3.message ? e3.message : e3);
       }
     }
   }
@@ -102,6 +144,25 @@ async function generateImageWithOpenAI(prompt, size = '1024x1024') {
   });
   const json = await res.json();
   if (json && json.data && json.data[0] && json.data[0].b64_json) return json.data[0].b64_json;
+  return null;
+}
+
+async function generateTitleWithOpenAI(prompt) {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) return null;
+  try {
+    const messages = [
+      { role: 'system', content: 'You are a concise title generator. Return only a short title (max 8 words) for the requested topic.' },
+      { role: 'user', content: `Generate a short title for: ${prompt}` }
+    ];
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+      body: JSON.stringify({ model: process.env.OPENAI_MODEL || 'gpt-4o-mini', messages, max_tokens: 60 })
+    });
+    const json = await res.json();
+    if (json && json.choices && json.choices[0] && json.choices[0].message) return (json.choices[0].message.content || '').trim();
+  } catch (e) { console.warn('generateTitleWithOpenAI failed', e && e.message ? e.message : e); }
   return null;
 }
 
@@ -139,7 +200,12 @@ async function generateTextWithBing(prompt, title) {
 export default async function handler(req, res) {
   try {
     if (req.method !== 'POST') return res.status(405).json({ error: 'MethodNotAllowed' });
-    const { title, prompt, commit = true, auto = false, imagesCount = 2, includeVideos = false } = req.body || {};
+    const { title, prompt, commit = true, auto = false, imagesCount = 2, includeVideos = false, secret } = req.body || {};
+
+    // optional admin secret guard
+    if (process.env.AI_ADMIN_SECRET) {
+      if (!secret || secret !== process.env.AI_ADMIN_SECRET) return res.status(403).json({ ok: false, error: 'forbidden', message: 'missing or invalid secret' });
+    }
 
     let generated = null;
     let finalTitle = title;
@@ -150,12 +216,30 @@ export default async function handler(req, res) {
       } catch (e) {
         console.warn('composePostWithOpenAI failed', e && e.message ? e.message : e);
       }
+
+      // If composition failed, fallback to simpler flows:
+      if (!generated) {
+        // try to generate a reasonable title if missing
+        if (!finalTitle) {
+          try { finalTitle = (await generateTitleWithOpenAI(prompt || 'AI generated post')) || finalTitle; } catch (e) { /* ignore */ }
+        }
+
+        // If we still don't have a title, derive from prompt
+        if (!finalTitle) finalTitle = (prompt && prompt.split('\n')[0].slice(0, 60)) || `ai-post-${Date.now()}`;
+
+        // generate a body using the simpler generator
+        try {
+          const bodyFallback = await generateWithOpenAI(prompt || '', finalTitle);
+          if (bodyFallback) {
+            generated = { title: finalTitle, description: '', body: bodyFallback, images: [], videos: [] };
+          }
+        } catch (e) { console.warn('Fallback body generation failed', e && e.message ? e.message : e); }
+      }
+
       if (generated) {
         finalTitle = generated.title || finalTitle;
       }
     }
-
-    if (!finalTitle) return res.status(400).json({ error: 'missing_title' });
 
     // Determine body and metadata
     let body = null;
