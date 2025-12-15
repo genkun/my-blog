@@ -49,4 +49,5 @@ Gợi ý cải tiến
 
 Notes on providers
 
-- The server will prefer `OPENAI_API_KEY` for text and images (via OpenAI Images API). If you have `GENMINI_API_KEY` or `BINGAI_API_KEY` these env vars are accepted but provider-specific hooks are not implemented yet — they can be added later as needed.
+- Provider priority: prefer `OPENAI_API_KEY` (text + images). If not available, the server will fall back to `BINGAI_API_KEY` for text and `GENMINI_API_KEY` for images when configured. GitHub Copilot/other providers are not directly integrated yet.
+- `AI_ADMIN_SECRET` — (tuỳ chọn) If set, requests to `/api/ai/generate` must include `{ secret: '<value>' }` in the JSON body to be allowed. This helps prevent public abuse.

@@ -105,6 +105,37 @@ async function generateImageWithOpenAI(prompt, size = '1024x1024') {
   return null;
 }
 
+async function generateImageWithGenMini(prompt) {
+  const key = process.env.GENMINI_API_KEY;
+  if (!key) return null;
+  try {
+    const res = await fetch('https://api.genmini.ai/v1/images', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+      body: JSON.stringify({ prompt, size: '1024x1024', format: 'b64' })
+    });
+    const json = await res.json();
+    // Expected shape: { data: [{ b64: '...' }] }
+    if (json && json.data && json.data[0] && (json.data[0].b64 || json.data[0].b64_json)) return json.data[0].b64 || json.data[0].b64_json;
+  } catch (e) { console.warn('GenMini image generation failed', e && e.message ? e.message : e); }
+  return null;
+}
+
+async function generateTextWithBing(prompt, title) {
+  const key = process.env.BINGAI_API_KEY;
+  if (!key) return null;
+  try {
+    const res = await fetch('https://api.bing.microsoft.com/v7.0/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+      body: JSON.stringify({ prompt: `${title || ''}\n\n${prompt || ''}` })
+    });
+    const json = await res.json();
+    if (json && json.text) return json.text;
+  } catch (e) { console.warn('Bing text generation failed', e && e.message ? e.message : e); }
+  return null;
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method !== 'POST') return res.status(405).json({ error: 'MethodNotAllowed' });
@@ -152,20 +183,31 @@ export default async function handler(req, res) {
     const { owner, name, branch } = readRepoInfo();
     const slug = slugify(finalTitle) || `ai-post-${Date.now()}`;
 
+    // Helper: choose image generator (OpenAI -> GenMini)
+    async function makeImage(promptText) {
+      let b64 = null;
+      if (process.env.OPENAI_API_KEY) {
+        b64 = await generateImageWithOpenAI(promptText);
+      }
+      if (!b64 && process.env.GENMINI_API_KEY) {
+        b64 = await generateImageWithGenMini(promptText);
+      }
+      return b64;
+    }
+
     const uploadedImages = [];
     if (images && images.length && ghToken) {
       for (let i = 0; i < images.length; i++) {
         const img = images[i];
         const promptText = img.prompt || img;
         try {
-          let b64 = null;
-          // Prefer OpenAI image generation if available
-          b64 = await generateImageWithOpenAI(promptText);
-          if (!b64) {
-            console.warn('No image generated for prompt:', promptText);
-            continue;
-          }
-
+            let b64 = null;
+            // Prefer OpenAI image generation, fallback to GenMini
+            b64 = await makeImage(promptText);
+            if (!b64) {
+              console.warn('No image generated for prompt:', promptText);
+              continue;
+            }
           const fname = `${slug}-${i + 1}.png`;
           const pathInRepo = `public/assets/images/ai/${fname}`;
           const createUrl = `https://api.github.com/repos/${owner}/${name}/contents/${encodeURIComponent(pathInRepo)}`;
@@ -198,6 +240,29 @@ export default async function handler(req, res) {
       }
     }
 
+    // If provider fallback needed (no images suggested but user requested imagesCount),
+    // attempt to generate generic images and prepend them.
+    if (!uploadedImages.length && imagesCount && imagesCount > 0 && ghToken) {
+      for (let j = 0; j < imagesCount; j++) {
+        try {
+          const promptText = `An illustrative photo for the article titled ${finalTitle}`;
+          const b64 = await makeImage(promptText);
+          if (!b64) continue;
+          const fname = `${slug}-auto-${j + 1}.png`;
+          const pathInRepo = `public/assets/images/ai/${fname}`;
+          const createUrl = `https://api.github.com/repos/${owner}/${name}/contents/${encodeURIComponent(pathInRepo)}`;
+          const createResp = await fetchJson(createUrl, {
+            method: 'PUT',
+            headers: { Authorization: `token ${ghToken}`, 'Content-Type': 'application/json', 'User-Agent': 'ai-generate' },
+            body: JSON.stringify({ message: `chore: add AI image ${fname}`, content: b64, branch })
+          });
+          if (!createResp.ok) continue;
+          uploadedImages.push({ prompt: promptText, path: '/' + pathInRepo });
+        } catch (e) { console.warn('auto image generation failed', e && e.message ? e.message : e); }
+      }
+      if (uploadedImages.length) body = `![](${uploadedImages[0].path})\n\n` + body;
+    }
+
     // Compose final markdown with frontmatter
     const markdown = `---\ntitle: ${finalTitle}\npublished: ${getDate()}\ndescription: "${(description || '').replace(/"/g, '\\"')}"\nimage: "${uploadedImages[0] ? uploadedImages[0].path : ''}"\ntags: []\ncategory: ''\ndraft: ${commit ? 'false' : 'true'}\nlang: ''\n---\n\n${body}`;
 
@@ -228,7 +293,12 @@ export default async function handler(req, res) {
       return res.status(500).json({ ok: false, error: 'create_failed', details: createResp.body });
     }
 
-    return res.json({ ok: true, committed: true, path: createResp.body.content.path, html_url: createResp.body.content.html_url, generated: generated, images: uploadedImages });
+    // compute slug from filename
+    const createdPath = createResp.body && createResp.body.content && createResp.body.content.path;
+    const fname = createdPath ? createdPath.split('/').pop() : (filename.split('/').pop());
+    const slugOut = fname ? fname.replace(/\.md$/, '') : slug;
+
+    return res.json({ ok: true, committed: true, path: createdPath, html_url: createResp.body.content.html_url, slug: slugOut, generated: generated, images: uploadedImages });
   } catch (err) {
     console.error('AI generate handler error', err);
     res.status(500).json({ error: 'server_error', message: err.message || String(err) });

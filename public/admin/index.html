@@ -431,6 +431,13 @@
               if (json.committed) {
                 alert('Bài đã được tạo: ' + (json.path || json.html_url || ''));
                 try { document.getElementById('gh-login') && (document.getElementById('gh-login').style.display = 'none'); } catch (e) {}
+                try {
+                  if (opts && opts.autoOpenEditor && json.slug) {
+                    var url = '/admin/#/collections/blog/new?slug=' + encodeURIComponent(json.slug);
+                    window.location.href = url;
+                    return json;
+                  }
+                } catch (e) { /* ignore */ }
                 setTimeout(function () { window.location.reload(); }, 500);
               } else {
                 var content = json.content || '';
@@ -459,7 +466,8 @@
               var count = prompt('Số lượng hình ảnh (mặc định 2):', '2');
               var n = parseInt(count, 10);
               if (isNaN(n) || n < 0) n = 2;
-              await window._decap_ai_create({ auto: true, commit: true, imagesCount: n });
+              var openEditor = confirm('Mở trình soạn thảo sau khi tạo (nên dùng để kiểm tra)?');
+              await window._decap_ai_create({ auto: true, commit: true, imagesCount: n, autoOpenEditor: openEditor });
             });
           }
 
