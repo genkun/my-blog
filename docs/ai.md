@@ -22,6 +22,15 @@ Endpoint serverless:
     - `{ ok: true, committed: false, content }` nếu không commit (token không có hoặc commit=false)
     - `{ ok: true, generated, images }` additional metadata when using `auto=true`
 
+Example CURL (auto generate):
+
+```bash
+curl -X POST https://<your-site>/api/ai/generate \
+  -H "Content-Type: application/json" \
+  -d '{"auto":true, "prompt":"Viết một bài hướng dẫn về cách tối ưu bài blog cho SEO"}'
+```
+
+
 Hành vi client (Admin UI):
 
 - Trong trang `/admin` có nút "Tạo bài bằng AI".
@@ -37,3 +46,7 @@ Gợi ý cải tiến
 
 - Thêm UI modal để chỉnh frontmatter trước khi commit.
 - Thêm tích hợp với editor để mở bài mới sau khi tạo (ví dụ chuyển tới `#/collections/blog/new?slug=...` nếu Decap hỗ trợ truyền nội dung khởi tạo).
+
+Notes on providers
+
+- The server will prefer `OPENAI_API_KEY` for text and images (via OpenAI Images API). If you have `GENMINI_API_KEY` or `BINGAI_API_KEY` these env vars are accepted but provider-specific hooks are not implemented yet — they can be added later as needed.
