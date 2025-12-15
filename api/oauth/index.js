@@ -1,14 +1,20 @@
 
+// /api/oauth/index.js
 export const config = { runtime: 'nodejs' };
 
-function rand(n = 16) {
-  return [...crypto.getRandomValues(new Uint8Array(n))]
-    .map(b => ('0' + b.toString(16)).slice(-2)).join('');
+import crypto from 'crypto';
+
+/**
+ * Tạo chuỗi state ngẫu nhiên, an toàn bằng Node crypto.
+ */
+function makeState(bytes = 16) {
+  return crypto.randomBytes(bytes).toString('hex'); // 32 hex chars
 }
 
 export default async function handler(req, res) {
   try {
-    const siteUrl   = process.env.SITE_URL;   // ví dụ: https://blog.thien.ac
+    // Env bắt buộc
+    const siteUrl   = process.env.SITE_URL;             // ví dụ: https://blog.thien.ac
     const client_id = process.env.OAUTH_CLIENT_ID;
     const scope     = process.env.OAUTH_SCOPE || 'repo';
     const host      = process.env.OAUTH_HOSTNAME || 'github.com';
@@ -20,24 +26,10 @@ export default async function handler(req, res) {
       });
     }
 
+    // origin thật của trang CMS: ưu tiên ?origin, fallback SITE_URL
     const origin = (req.query.origin && String(req.query.origin)) || siteUrl;
 
-    const stateRaw = rand(16);
-    res.setHeader('Set-Cookie', [
-      `oauth_state=${encodeURIComponent(stateRaw)}; Path=/; Max-Age=600; SameSite=Lax; Secure; HttpOnly`,
-      `oauth_origin=${encodeURIComponent(origin)}; Path=/; Max-Age=600; SameSite=Lax; Secure; HttpOnly`,
-    ]);
+    // state cho CSRF
+    const state = makeState(16);
 
-    const redirect_uri = `${siteUrl}/api/oauth/callback?origin=${encodeURIComponent(origin)}`;
-    const authorizeUrl = new URL(`https://${host}/login/oauth/authorize`);
-    authorizeUrl.searchParams.set('client_id', client_id);
-    authorizeUrl.searchParams.set('redirect_uri', redirect_uri);
-    authorizeUrl.searchParams.set('scope', scope);
-    authorizeUrl.searchParams.set('state', stateRaw);
-
-    res.status(302).setHeader('Location', authorizeUrl.toString()).end();
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'ServerError', message: err.message });
-  }
-}
+    // Set cookie cho callback đối chiếu:
