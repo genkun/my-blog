@@ -416,9 +416,8 @@
             var title = opts.title || prompt('Tiêu đề bài viết (bắt buộc):');
             if (!title) return alert('Tiêu đề bắt buộc');
             var promptText = typeof opts.prompt !== 'undefined' ? opts.prompt : prompt('Mô tả ngắn hoặc ghi chú cho AI (tuỳ chọn):', 'Viết một bài hướng dẫn ngắn về ...');
-            // Ask the user before committing by default. If caller passed `commit` explicitly,
-            // honor it; otherwise ask for confirmation so the post isn't published unexpectedly.
-            var commit = typeof opts.commit === 'boolean' ? opts.commit : confirm('Publish ngay (commit) vào repository? Bấm OK để publish, Cancel để chỉ tạo nội dung (không commit)');
+            // Always publish directly to repository
+            var commit = typeof opts.commit === 'boolean' ? opts.commit : true;
             aiBtn.disabled = true; aiBtn.textContent = 'Đang tạo...';
             try {
               // include forceFake flag if user enabled mock AI in the UI (local dev only)
@@ -455,30 +454,7 @@
                 } catch (e) { /* ignore */ }
                 setTimeout(function () { window.location.reload(); }, 500);
               } else {
-                var content = json.content || '';
-                // If the user chose not to commit (commit === false), treat the response as a draft
-                // and copy the generated content to clipboard so they can paste it into a new post.
-                if (commit === false) {
-                  try {
-                    await navigator.clipboard.writeText(content);
-                    alert('Bản nháp đã được sao chép vào clipboard. Vào Admin -> New Post và dán nội dung.');
-                    try {
-                      if (opts && opts.autoOpenEditor && json.slug) {
-                        var url = '/admin/#/collections/blog/new?slug=' + encodeURIComponent(json.slug);
-                        window.location.href = url;
-                        return json;
-                      }
-                    } catch (e) { /* ignore */ }
-                  } catch (e) {
-                    alert('Không thể sao chép vào clipboard. Vui lòng sao chép thủ công.');
-                  }
-                } else {
-                  var ok = confirm('Server could not commit automatically. Bấm OK để sao chép nội dung vào clipboard so bạn có thể dán vào bài mới.');
-                  if (ok) {
-                    await navigator.clipboard.writeText(content);
-                    alert('Nội dung đã được sao chép vào clipboard. Vào Admin -> New Post và dán nội dung.');
-                  }
-                }
+                alert('Bài đã được tạo nhưng chưa publish. Vui lòng thử lại hoặc kiểm tra cài đặt server.');
               }
               return json;
             } catch (e) {
@@ -625,17 +601,12 @@
               if (s) sessionStorage.setItem('ai_admin_secret', s);
             });
 
-            // Initialize publish toggle state (persisted in localStorage)
+            // Always publish directly - hide the publish toggle
             try {
-              var pubToggle = document.getElementById('ai-chat-publish-toggle');
-              var saved = localStorage.getItem('decap_ai_publish_from_chat');
-              if (saved === null) {
-                // default: enabled (publish directly from chat)
-                localStorage.setItem('decap_ai_publish_from_chat', '1');
-                saved = '1';
+              var pubLabel = document.querySelector('label');
+              if (pubLabel && pubLabel.textContent.includes('Publish')) {
+                pubLabel.style.display = 'none';
               }
-              pubToggle.checked = saved === '1';
-              pubToggle.addEventListener('change', function () { try { localStorage.setItem('decap_ai_publish_from_chat', this.checked ? '1' : '0'); } catch (e) {} });
             } catch (e) {}
 
             document.getElementById('ai-chat-send').addEventListener('click', async function () {
@@ -677,39 +648,27 @@
               }
               if (!last) last = document.getElementById('ai-chat-input').value.trim();
               if (!last) return alert('Không có lệnh để thực thi');
-              // Check publish preference (if enabled, publish directly and skip confirmation)
-              var publish = false;
-              try { publish = localStorage.getItem('decap_ai_publish_from_chat') === '1'; } catch (e) {}
-              if (!publish) {
-                if (!confirm('Xác nhận: hãy để AI tạo bài và lưu bản nháp (không publish tự động) dựa trên nội dung sau?\n\n' + (last.slice(0,200) + (last.length>200?'...':'')))) return;
-              }
+              // Confirm before publishing
+              if (!confirm('Xác nhận: tạo bài và publish trực tiếp dựa trên:\n\n' + (last.slice(0,200) + (last.length>200?'...':'')))) return;
               try {
                 var secret = sessionStorage.getItem('ai_admin_secret');
-                // When publish toggle is enabled, send commit:true to publish immediately
-                var body = { auto: true, prompt: last, commit: !!publish, imagesCount: 2 };
+                // Always publish directly to repository
+                var body = { auto: true, prompt: last, commit: true, imagesCount: 2 };
                 if (secret) body.secret = secret;
                 try { if (localStorage.getItem('decap_ai_use_mock') === '1') body.forceFake = true; } catch (e) {}
                 // Update UI status
-                try { document.getElementById('ai-chat-status').textContent = publish ? 'Trạng thái: Đang publish...' : 'Trạng thái: Đang tạo bản nháp...'; } catch (e) {}
+                try { document.getElementById('ai-chat-status').textContent = 'Trạng thái: Đang tạo và publish...'; } catch (e) {}
                 var resp = await fetch('/api/ai/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
                 var json = await resp.json();
                 if (!json.ok) throw new Error(json.error || 'failed');
                 // If server committed (unexpected), report published; otherwise treat as draft
                 if (json.committed) {
-                  appendChat('System', 'Bài đã được publish: ' + (json.path || json.html_url || '— check repo'));
-                  try { document.getElementById('ai-chat-status').textContent = 'Trạng thái: Đã publish'; } catch (e) {}
-                  if (json.slug) window.location.href = '/admin/#/collections/blog/new?slug=' + encodeURIComponent(json.slug);
+                  appendChat('System', '✅ Bài đã được publish thành công: ' + (json.path || json.html_url || 'xem tại repo'));
+                  try { document.getElementById('ai-chat-status').textContent = 'Trạng thái: Hoàn tất'; } catch (e) {}
+                  setTimeout(function () { window.location.reload(); }, 1500);
                 } else {
-                  // Copy draft to clipboard for easy pasting into Admin new post
-                  var content = json.content || '';
-                  try {
-                    await navigator.clipboard.writeText(content);
-                    appendChat('System', 'Bản nháp đã được sao chép vào clipboard. Vào Admin -> New Post và dán nội dung.');
-                    try { document.getElementById('ai-chat-status').textContent = 'Trạng thái: Bản nháp đã lưu (sao chép vào clipboard)'; } catch (e) {}
-                  } catch (e) {
-                    appendChat('System', 'Bản nháp sẵn sàng (không thể ghi vào clipboard tự động). Vui lòng sao chép thủ công.');
-                    try { document.getElementById('ai-chat-status').textContent = 'Trạng thái: Bản nháp sẵn sàng (copy thủ công)'; } catch (e) {}
-                  }
+                  appendChat('System', 'Lỗi: Bài không thể publish. Vui lòng kiểm tra cài đặt server.');
+                  try { document.getElementById('ai-chat-status').textContent = 'Trạng thái: Lỗi publish'; } catch (e) {}
                 }
               } catch (e) {
                 appendChat('System', 'Lỗi khi tạo bài: ' + (e.message || e));
