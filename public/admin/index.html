@@ -8,18 +8,15 @@
     <title>Content Manager</title>
 
     <!-- Khai báo đường dẫn config.yml cho Decap CMS (PHẢI là thẻ link đúng) -->
-    <link
-      href="/admin/config.yml"
-      type="text/yaml"
-      rel="cms-config-url"
-    />
+    <!-- ✓ ĐẶT trong <head> -->
+    <link rel="cms-config-url" href="/admin/config.yml" type="text/yaml" />
 
-    <!-- Listener OAuth: nhận token từ popup và điều hướng vào dashboard
-         ĐẶT TRƯỚC khi nạp decap-cms để không bỏ lỡ message -->
+    <!-- Listener OAuth: nhận token từ popup và điều hướng vào dashboard.
+         ✓ ĐẶT trong <head> để sẵn sàng trước khi popup gửi postMessage -->
     <script>
       (function () {
-        // Đường dẫn dashboard sau khi đăng nhập (đổi nếu cần)
-        var DASHBOARD_PATH = '/admin/#/';
+        // ✅ Đường dẫn dashboard sau khi đăng nhập (theo yêu cầu)
+        var DASHBOARD_PATH = '/admin/#/collections';
 
         // Chỉ nhận message từ đúng origin của site
         var allowedOrigin = window.location.origin;
@@ -72,7 +69,7 @@
               // Tạo payload JSON tối thiểu và gửi cho Decap nếu có sẵn
               var payload = { token: token, provider: 'github', backend: 'github' };
               if (window.CMS && typeof window.CMS.authCallback === 'function') {
-                window.CMS.authCallback(payload);
+                               window.CMS.authCallback(payload);
               } else {
                 localStorage.setItem('decap_oauth_payload', JSON.stringify(payload));
               }
@@ -92,16 +89,9 @@
         window.addEventListener('message', handleOAuthMessage, false);
       })();
     </script>
-
-  
-
-    <!-- (Tùy chọn) Nếu muốn tự chủ động khởi tạo, bật MANUAL_INIT rồi gọi CMS.init() sau khi script sẵn sàng -->
-    <!-- <script>window.CMS_MANUAL_INIT = true;</script> -->
   </head>
 
   <body>
-      <!-- NẠP Decap CMS v3 từ CDN (PHẢI là thẻ script đúng) -->
-    <script src="https://unpkg.com/decap-cms@3/dist/decap-cms.js"></script>
     <!-- Phần tử mount bắt buộc cho Decap CMS -->
     <div id="nc-root"></div>
 
@@ -134,4 +124,7 @@
         }
       })();
     </script>
+
+    <!-- ✅ NẠP Decap CMS v3 từ CDN: BẮT BUỘC nằm trong <body> -->
+    <script src="https://unpkg.com/decap-cms@3/dist/decap-cms.js"></script>
   </body>
