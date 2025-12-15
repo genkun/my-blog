@@ -40,11 +40,13 @@ function readRepoInfo() {
     const txt = fs.readFileSync(cfgPath, 'utf8');
     const repoMatch = txt.match(/^\s*repo:\s*(?<repo>\S+)/m);
     const branchMatch = txt.match(/^\s*branch:\s*(?<branch>\S+)/m);
+    const publishMatch = txt.match(/^\s*publish_mode:\s*(?<mode>\S+)/m);
     if (!repoMatch) throw new Error('repo not found in ' + cfgPath);
     const repo = repoMatch.groups.repo.trim();
     const [owner, name] = repo.split('/');
     const branch = branchMatch ? branchMatch.groups.branch.trim() : 'main';
-    return { owner, name, branch };
+    const publish_mode = publishMatch ? publishMatch.groups.mode.trim() : 'simple';
+    return { owner, name, branch, publish_mode };
   } catch (e) {
     console.error('Error reading config.yml:', e.message);
     throw e;
@@ -314,7 +316,7 @@ export default async function handler(req, res) {
 
     // If images were suggested, attempt to generate them (OpenAI images if available)
     const ghToken = process.env.AI_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
-    const { owner, name, branch } = readRepoInfo();
+    const { owner, name, branch, publish_mode } = readRepoInfo();
     const slug = slugify(finalTitle) || `ai-post-${Date.now()}`;
 
     // Helper: choose image generator (OpenAI -> GenMini)
@@ -421,13 +423,59 @@ export default async function handler(req, res) {
     const filename = `src/content/posts/${slug}-${Date.now()}.md`;
 
     // Now that we've finalized a unique filename, compute slug from filename and include it in frontmatter
-    const createUrl = `https://api.github.com/repos/${owner}/${name}/contents/${encodeURI(filename)}`;
-    const markdownToWrite = composeMarkdown(filename.split('/').pop().replace(/\.md$/, ''));
-    const createResp = await fetchJson(createUrl, {
-      method: 'PUT',
-      headers: { Authorization: `token ${ghToken}`, 'Content-Type': 'application/json', 'User-Agent': 'ai-generate' },
-      body: JSON.stringify({ message: `chore: create AI post ${finalTitle}`, content: Buffer.from(markdownToWrite).toString('base64'), branch })
-    });
+    const createOnMain = async () => {
+      const createUrl = `https://api.github.com/repos/${owner}/${name}/contents/${encodeURI(filename)}`;
+      const markdownToWrite = composeMarkdown(filename.split('/').pop().replace(/\.md$/, ''));
+      return await fetchJson(createUrl, {
+        method: 'PUT',
+        headers: { Authorization: `token ${ghToken}`, 'Content-Type': 'application/json', 'User-Agent': 'ai-generate' },
+        body: JSON.stringify({ message: `chore: create AI post ${finalTitle}`, content: Buffer.from(markdownToWrite).toString('base64'), branch })
+      });
+    };
+
+    // If the repo is configured with editorial_workflow, create a PR instead of committing directly
+    let createResp;
+    if (ghToken && (publish_mode === 'editorial_workflow' || process.env.FORCE_PR === '1')) {
+      try {
+        // 1) get base branch sha
+        const refUrl = `https://api.github.com/repos/${owner}/${name}/git/ref/heads/${encodeURIComponent(branch)}`;
+        const refResp = await fetchJson(refUrl, { headers: { Authorization: `token ${ghToken}`, 'User-Agent': 'ai-generate' } });
+        if (!refResp.ok) throw new Error('failed to fetch base ref');
+        const baseSha = refResp.body && refResp.body.object && refResp.body.object.sha;
+        const newBranch = `ai-post-${slug}-${Date.now()}`;
+        // 2) create new branch
+        const createRefUrl = `https://api.github.com/repos/${owner}/${name}/git/refs`;
+        const createRefResp = await fetchJson(createRefUrl, {
+          method: 'POST', headers: { Authorization: `token ${ghToken}`, 'Content-Type': 'application/json', 'User-Agent': 'ai-generate' },
+          body: JSON.stringify({ ref: `refs/heads/${newBranch}`, sha: baseSha })
+        });
+        if (!createRefResp.ok) throw new Error('failed to create branch');
+        // 3) create file on new branch
+        const createUrl = `https://api.github.com/repos/${owner}/${name}/contents/${encodeURI(filename)}`;
+        const markdownToWrite = composeMarkdown(filename.split('/').pop().replace(/\.md$/, ''));
+        createResp = await fetchJson(createUrl, {
+          method: 'PUT',
+          headers: { Authorization: `token ${ghToken}`, 'Content-Type': 'application/json', 'User-Agent': 'ai-generate' },
+          body: JSON.stringify({ message: `chore: create AI post ${finalTitle}`, content: Buffer.from(markdownToWrite).toString('base64'), branch: newBranch })
+        });
+        if (!createResp.ok) throw new Error('failed to create file on branch');
+        // 4) open PR
+        const prUrl = `https://api.github.com/repos/${owner}/${name}/pulls`;
+        const prResp = await fetchJson(prUrl, {
+          method: 'POST', headers: { Authorization: `token ${ghToken}`, 'Content-Type': 'application/json', 'User-Agent': 'ai-generate' },
+          body: JSON.stringify({ title: `AI: ${finalTitle}`, head: newBranch, base: branch, body: `Automated AI-generated post: ${finalTitle}` })
+        });
+        if (!prResp.ok) throw new Error('failed to create PR');
+        // Return a response that indicates PR was created
+        const prHtml = prResp.body && prResp.body.html_url;
+        return res.json({ ok: true, committed: false, pr_url: prHtml, generated: generated, images: uploadedImages });
+      } catch (e) {
+        console.warn('PR flow failed, falling back to direct commit', e && e.message ? e.message : e);
+        createResp = await createOnMain();
+      }
+    } else {
+      createResp = await createOnMain();
+    }
 
     if (!createResp.ok) {
       console.error('Failed to create file', createResp.status, createResp.body);

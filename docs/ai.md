@@ -79,6 +79,12 @@ AI-generated posts
 - Khi server commit thành công (ví dụ `commit: true` hoặc `auto` generation), bài viết sẽ được "publish now": `draft: false` và `published` được đặt theo ngày hiện tại, do đó bài sẽ xuất hiện ngay trong **Collections** của Decap CMS.
 - Lưu ý: mặc định `commit` là `true` trong endpoint, tức là nếu bạn không chọn hủy commit (hoặc gọi với `commit: false`), bài sẽ được commit và publish tự động.
 
+Thao tác "Thực thi" trong Chat AI
+
+- Trong modal Chat AI có **Publish trực tiếp** (Publish trực tiếp) — một toggle lưu trong `localStorage`. Khi bật, nút **Thực thi** sẽ publish bài ngay lập tức (gửi `commit: true` tới server) và sẽ không hiện hộp thoại xác nhận ("không cần hỏi"). Mặc định toggle này được bật để thuận tiện; bạn có thể tắt nếu muốn lưu bản nháp thay vì publish.
+- Nếu toggle tắt, hành vi cũ vẫn giữ: **Thực thi** sẽ tạo bản nháp (commit=false) và cố gắng sao chép nội dung vào clipboard, đồng thời hiển thị **Trạng thái** trong modal.
+- Nếu bạn muốn publish tự động từ Chat, hãy dùng nút "Tạo AI (Auto)" hoặc gọi `/api/ai/generate` với `commit: true` (hoặc thay đổi hành vi này nếu cần). Việc mặc định lưu bản nháp giúp tránh publish vô ý.
+
 Tự động triển khai (Deploy)
 
 - Nếu bạn lưu trang trên một nền tảng như Vercel, commit lên `main` thường sẽ bắt đầu quá trình build & deploy tự động. Để chủ động kích hoạt một webhook deploy ngay khi post được commit, bạn có thể cấu hình biến môi trường `VERCEL_DEPLOY_HOOK` (hoặc `DEPLOY_HOOK`) với URL webhook do Vercel/Netlify/GitHub cung cấp. Server sẽ POST một payload nhỏ `{ source: 'ai-generate', path, slug }` tới URL đó khi một bài được commit.
