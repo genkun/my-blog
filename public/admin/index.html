@@ -127,14 +127,84 @@
           }
         }
 
-        // Try immediately and poll a few times while CMS initializes
+        // Try immediately and poll while CMS initializes. Use a longer window
+        // because Decap may take a while to initialize (especially on slow
+        // networks or with large builds). Poll up to ~30s.
         if (!tryDeliverStoredPayload()) {
           var attempts = 0;
           var t = setInterval(function () {
             attempts++;
-            if (tryDeliverStoredPayload() || attempts >= 12) clearInterval(t);
-          }, 500);
+            if (tryDeliverStoredPayload() || attempts >= 30) {
+              if (attempts >= 30) console.warn('[OAuth] CMS did not become ready within timeout');
+              clearInterval(t);
+            }
+          }, 1000);
         }
+      })();
+    </script>
+
+    <script>
+      // Optional debug panel: visible when URL contains `oauth_debug=1`.
+      (function () {
+        if (!location.search.includes('oauth_debug=1')) return;
+
+        function createPanel() {
+          var panel = document.createElement('div');
+          panel.style.position = 'fixed';
+          panel.style.right = '12px';
+          panel.style.bottom = '12px';
+          panel.style.zIndex = 99999;
+          panel.style.background = 'rgba(0,0,0,0.7)';
+          panel.style.color = '#fff';
+          panel.style.padding = '8px';
+          panel.style.borderRadius = '6px';
+          panel.style.fontSize = '13px';
+          panel.innerHTML = `
+            <div style="margin-bottom:6px"><b>OAuth Debug</b></div>
+            <div id="oauth-debug-info" style="max-width:260px;white-space:pre-wrap;margin-bottom:6px"></div>
+            <button id="oauth-debug-deliver" style="margin-right:6px">Deliver payload</button>
+            <button id="oauth-debug-clear">Clear storage</button>
+          `;
+          document.body.appendChild(panel);
+
+          var info = panel.querySelector('#oauth-debug-info');
+          var btn = panel.querySelector('#oauth-debug-deliver');
+          var clearBtn = panel.querySelector('#oauth-debug-clear');
+
+          function refreshInfo() {
+            var payload = localStorage.getItem('decap_oauth_payload');
+            var token = localStorage.getItem('decap_token');
+            info.textContent = 'payload: ' + (payload || '(none)') + '\n' + 'token: ' + (token || '(none)') + '\n' + 'cookie: ' + (document.cookie || '(none)');
+          }
+
+          btn.addEventListener('click', function () {
+            try {
+              var raw = localStorage.getItem('decap_oauth_payload');
+              var p = raw ? JSON.parse(raw) : null;
+              if (!p) return alert('No payload stored');
+              if (window.CMS && typeof window.CMS.authCallback === 'function') {
+                window.CMS.authCallback(p);
+                alert('Delivered payload to CMS.authCallback');
+              } else {
+                alert('CMS not ready yet');
+              }
+            } catch (e) { alert('Error: ' + e.message); }
+            refreshInfo();
+          });
+
+          clearBtn.addEventListener('click', function () {
+            localStorage.removeItem('decap_oauth_payload');
+            localStorage.removeItem('decap_token');
+            refreshInfo();
+            alert('Cleared payload/token from localStorage');
+          });
+
+          refreshInfo();
+        }
+
+        // Defer panel creation until DOM ready
+        if (document.readyState === 'complete' || document.readyState === 'interactive') createPanel();
+        else document.addEventListener('DOMContentLoaded', createPanel);
       })();
     </script>
 

@@ -31,8 +31,14 @@ commit_messages:
 media_folder: "src/assets/images"
 public_folder: "/src/assets/images"   # đổi lại nếu site thực sự dùng /src/assets/images
 
-# (Khuyên dùng cho nhóm) thêm workflow nháp/duyệt/xuất bản bằng PR
-publish_mode: editorial_workflow
+# Publish mode controls how posts are persisted to the repository.
+# - `editorial_workflow`: creates Pull Requests for changes (review required)
+# - `simple`: commits directly to the repository (no PR, immediate publish)
+#
+# If you want posts to be committed and synchronized automatically (no PR),
+# use `simple`. Make sure the OAuth token has `repo` scope and the authenticated
+# user/app has write permission to the repository.
+publish_mode: simple
 
 editor:
   visualEditing: true

@@ -77,6 +77,37 @@ window.open(url, 'github_oauth', 'width=800,height=700');
   - Kiểm tra file `/admin/config.yml` có `backend.repo` đúng và `auth.client_id` đã chứa giá trị thực (không phải `${OAUTH_CLIENT_ID}` literal) trên môi trường deploy.
   - Kiểm tra token có đủ scope (`repo`) và user có quyền ghi vào repo (branch, collaborator, app installation).
 
+— Kiểm tra quyền token bằng GitHub API
+
+1. Mở Console trên trang `/admin` và lấy token:
+
+```js
+var token = localStorage.getItem('decap_token');
+console.log(token);
+```
+
+2. Kiểm tra thông tin user (nếu token hợp lệ, trả về user object):
+
+```js
+fetch('https://api.github.com/user', { headers: { Authorization: 'token ' + token } })
+  .then(r => r.json()).then(console.log).catch(console.error);
+```
+
+3. Kiểm tra repo access:
+
+```js
+fetch('https://api.github.com/repos/<OWNER>/<REPO>', { headers: { Authorization: 'token ' + token } })
+  .then(r => r.json()).then(console.log).catch(console.error);
+```
+
+Nếu API trả lỗi 401/403, token không có quyền hoặc đã hết hạn. Hãy đảm bảo `scope` bao gồm `repo` và user hoặc app có quyền ghi vào repo.
+
+Direct publish (tự động commit)
+
+- Nếu bạn muốn phần quản trị tự động commit và publish bài viết (không tạo Pull Request), đặt `publish_mode: simple` trong `public/admin/config.yml`.
+- Với chế độ `simple`, việc publish trong admin sẽ tạo commit thẳng lên nhánh cấu hình (mặc định `main`). Hãy chắc chắn token OAuth có `repo` scope và user/app có quyền ghi vào repo.
+- Nếu bạn muốn quy trình review + merge, giữ `publish_mode: editorial_workflow` để CMS tạo Pull Request thay vì commit trực tiếp.
+
 - Các lỗi phổ biến: origin mismatch (callback gửi tới origin A nhưng admin đang mở origin B), cookie `oauth_state` bị mất (CSRF state mismatch), hoặc `OAUTH_CLIENT_ID/SECRET` chưa đặt đúng trên host.
 
 Nếu bạn muốn, tôi có thể:
