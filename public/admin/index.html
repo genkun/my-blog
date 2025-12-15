@@ -596,7 +596,7 @@
                 var j = await rsp.json();
                 if (!j.ok) {
                   popLastAi();
-                  appendChat('AI', 'Lỗi: ' + (j.error || j.message || 'AI returned error'));
+                  appendChat('AI', 'Lỗi: ' + (j.message || j.error || 'AI returned error'));
                   return;
                 }
                 popLastAi();

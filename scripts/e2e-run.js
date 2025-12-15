@@ -112,6 +112,40 @@ async function run() {
   assert.strictEqual(res._status, 403);
   console.log('✓ admin secret enforced');
 
+  // Test 9: /api/ai/chat without OPENAI_API_KEY -> 400 with helpful message
+  delete process.env.OPENAI_API_KEY;
+  // ensure admin secret not interfering with chat endpoint
+  delete process.env.AI_ADMIN_SECRET;
+  global.fetch = mockFetchFactory([]); // should not be called
+  res = makeRes();
+  // call chatHandler directly
+  await chatHandler(makeReq('POST', { prompt: 'hello' }), res);
+  assert.strictEqual(res._status, 400);
+  assert.strictEqual(res._body.ok, false);
+  assert.strictEqual(res._body.error, 'missing_api_key');
+  console.log('✓ chat handler returns useful message when OPENAI_API_KEY missing');
+
+  // Test 10: enable DEV_USE_FAKE_OPENAI and ensure chat/generate return mock responses
+  process.env.DEV_USE_FAKE_OPENAI = '1';
+  process.env.OPENAI_API_KEY = 'dev-key';
+  global.fetch = mockFetchFactory([]);
+  res = makeRes();
+  await chatHandler(makeReq('POST', { prompt: 'xin chao' }), res);
+  assert.strictEqual(res._status, 200);
+  assert.strictEqual(res._body.ok, true);
+  assert(res._body.reply && res._body.reply.indexOf('DEV_MOCK') !== -1);
+  console.log('✓ chat mock provider returns dev reply');
+
+  // generate handler compose mock
+  res = makeRes();
+  await genHandler(makeReq('POST', { title: 'giáo trình tiếng trung cho người việt', prompt: 'viết nội dung ngắn', commit: false }), res);
+  assert.strictEqual(res._status, 200);
+  assert.strictEqual(res._body.ok, true);
+  assert.strictEqual(res._body.committed, false);
+  // The dev mock includes 'DEV_MOCK' marker in the generated body
+  assert(res._body.content && res._body.content.indexOf('DEV_MOCK') !== -1);
+  console.log('✓ generate mock provider returns content (dev mock)');
+
   // Test 7: real-world scenario - generate with explicit Vietnamese title (no commit)
   delete process.env.AI_ADMIN_SECRET;
   global.fetch = mockFetchFactory([

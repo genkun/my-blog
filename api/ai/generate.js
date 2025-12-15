@@ -53,7 +53,13 @@ function readRepoInfo() {
 
 async function generateWithOpenAI(prompt, title) {
   const key = process.env.OPENAI_API_KEY;
-  if (!key) return null;
+  if (!key || key === 'dev-key') {
+    if (process.env.DEV_USE_FAKE_OPENAI === '1' || process.env.OPENAI_API_KEY === 'dev-key') {
+      const mock = await import('./mock.js');
+      return mock.simpleGenerate(prompt, title);
+    }
+    return null;
+  }
 
   const sys = `You are an assistant that writes blog posts in Markdown. Return the full markdown body (no surrounding JSON) with appropriate frontmatter omitted.`;
   const messages = [
@@ -73,7 +79,13 @@ async function generateWithOpenAI(prompt, title) {
 
 async function composePostWithOpenAI(opts = {}) {
   const key = process.env.OPENAI_API_KEY;
-  if (!key) return null;
+  if (!key || key === 'dev-key') {
+    if (process.env.DEV_USE_FAKE_OPENAI === '1' || process.env.OPENAI_API_KEY === 'dev-key') {
+      const mock = await import('./mock.js');
+      return mock.composePost(opts);
+    }
+    return null;
+  }
 
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
   const system = `You are a helpful assistant that produces a complete blog post as JSON. Output MUST be valid JSON only. The JSON schema is:{"title":"...","description":"short description","body":"markdown content string","images":[{"prompt":"...","filename_hint":"..."}],"videos":[{"url":"...","caption":"..."}] }`;
@@ -143,7 +155,13 @@ async function composePostWithOpenAI(opts = {}) {
 
 async function generateImageWithOpenAI(prompt, size = '1024x1024') {
   const key = process.env.OPENAI_API_KEY;
-  if (!key) return null;
+  if (!key || key === 'dev-key') {
+    if (process.env.DEV_USE_FAKE_OPENAI === '1' || process.env.OPENAI_API_KEY === 'dev-key') {
+      const mock = await import('./mock.js');
+      return mock.generateImage(prompt);
+    }
+    return null;
+  }
   // Use image generation endpoint; request base64 result
   const res = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
@@ -157,7 +175,13 @@ async function generateImageWithOpenAI(prompt, size = '1024x1024') {
 
 async function generateTitleWithOpenAI(prompt) {
   const key = process.env.OPENAI_API_KEY;
-  if (!key) return null;
+  if (!key || key === 'dev-key') {
+    if (process.env.DEV_USE_FAKE_OPENAI === '1' || process.env.OPENAI_API_KEY === 'dev-key') {
+      const mock = await import('./mock.js');
+      return mock.generateTitle(prompt);
+    }
+    return null;
+  }
   try {
     const messages = [
       { role: 'system', content: 'You are a concise title generator. Return only a short title (max 8 words) for the requested topic.' },

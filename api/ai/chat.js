@@ -5,7 +5,14 @@ export const config = { runtime: 'nodejs' };
 
 async function callOpenAI(messages, model) {
   const key = process.env.OPENAI_API_KEY;
-  if (!key) throw new Error('OPENAI_API_KEY not set');
+  // In local development you can enable the fake provider by setting DEV_USE_FAKE_OPENAI=1
+  if (!key || key === 'dev-key') {
+    if (process.env.DEV_USE_FAKE_OPENAI === '1' || process.env.OPENAI_API_KEY === 'dev-key') {
+      const mock = await import('./mock.js');
+      return mock.chatReply(messages, model);
+    }
+    throw new Error('OPENAI_API_KEY not set. Set OPENAI_API_KEY on the server to use chat features.');
+  }
   const fetchFn = globalThis.fetch || (await import('node-fetch')).then(m => m.default);
   const resp = await fetchFn('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -47,6 +54,10 @@ export default async function handler(req, res) {
       reply = await callOpenAI(msgs, process.env.OPENAI_MODEL);
     } catch (e) {
       console.error('OpenAI call failed in /api/ai/chat', e && (e.message || e));
+      // If missing API key, return a 400 so the client can show actionable guidance.
+      if (String(e.message || e).indexOf('OPENAI_API_KEY') !== -1) {
+        return res.status(400).json({ ok: false, error: 'missing_api_key', message: String(e.message || e) });
+      }
       return res.status(502).json({ ok: false, error: 'upstream_error', message: e.message || String(e) });
     }
     return res.json({ ok: true, reply });
