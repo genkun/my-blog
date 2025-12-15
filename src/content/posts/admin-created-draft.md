@@ -1,6 +1,6 @@
 ---
 title: "Bài viết từ Admin (Nháp)"
-pubDate: 2025-12-15
+published: 2025-12-15
 description: "Bài viết nháp được trợ lý AI tạo dựa trên yêu cầu từ giao diện admin: https://blog.thien.ac/admin"
 tags:
   - admin
