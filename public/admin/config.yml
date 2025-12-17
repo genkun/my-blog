@@ -47,7 +47,7 @@ collections:
       - { label: "Cover Image", name: "image", widget: "image", required: false }
       - { label: "Tags", name: "tags", widget: "list", required: false }
       - { label: "Category", name: "category", widget: "string", required: false }
-      - { label: "Author", name: "author", widget: "string", default: "hopthurac" }
+      - { label: "Author", name: "author", widget: "string", default: "Genkun" }
       - { label: "Draft", name: "draft", widget: "boolean", default: false }
       - { label: "Lang", name: "lang", widget: "string", default: "vi" }
       - { label: "Canonical URL", name: "canonical", widget: "string", required: false }
