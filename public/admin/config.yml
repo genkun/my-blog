@@ -1,20 +1,12 @@
-
 # ===============================
 # Decap CMS config (Vercel + editorial workflow)
 # ===============================
-
 backend:
   name: github
   repo: genkun/my-blog
   branch: main
-
-  # Squash PR khi publish
   squash_merges: true
-
-  # Hiển thị đúng Deploy Preview trên GitHub (Vercel)
   preview_context: vercel/deployment
-
-  # Chuẩn hoá commit messages
   commit_messages:
     create: 'content({{collection}}): add "{{slug}}"'
     update: 'content({{collection}}): update "{{slug}}"'
@@ -23,10 +15,8 @@ backend:
     deleteMedia: 'assets: remove "{{path}}"'
     openAuthoring: '{{message}}'
 
-# Save → PR → Publish (merge)
 publish_mode: editorial_workflow
 
-# Thư mục media trong repo & URL công khai trên site
 media_folder: "src/assets/images"
 public_folder: "/assets/images"
 
@@ -39,18 +29,18 @@ collections:
     folder: "src/content/posts"
     create: true
     extension: "md"
-    slug: "{{year}}-{{month}}-{{day}}-{{slug}}"   # ghép ngày + slug
+    slug: "{{year}}-{{month}}-{{day}}-{{slug}}"
     summary: "{{title}} — {{year}}/{{month}}/{{day}}"
     view_filters:
       - { label: "Drafts", field: draft, pattern: true }
     view_groups:
       - { label: "Năm đăng", field: published, pattern: "\\d{4}" }
     fields:
-      - { label: "ID", name: "id", widget: "ulid" }          # yêu cầu đã registerWidget('ulid')
+      - { label: "ID", name: "id", widget: "ulid" }
       - { label: "Title", name: "title", widget: "string" }
       - label: "Slug (URL)"
         name: "slug"
-        widget: "slugify"                                     # yêu cầu đã registerWidget('slugify')
+        widget: "slugify"
         hint: "Sinh từ 'Title'"
       - { label: "Publish Date", name: "published", widget: "datetime", format: "YYYY-MM-DD HH:mm" }
       - { label: "Updated", name: "updated", widget: "datetime", format: "YYYY-MM-DD HH:mm", required: false }
@@ -61,7 +51,7 @@ collections:
       - { label: "Draft", name: "draft", widget: "boolean", default: false }
       - { label: "Lang", name: "lang", widget: "string", default: "vi" }
       - { label: "Canonical URL", name: "canonical", widget: "string", required: false }
-      - { label: "Body", name: "body", widget: "markdown" }  # AI sẽ tự fill nếu trống (do script preSave)
+      - { label: "Body", name: "body", widget: "markdown" }
 
   - name: "pages"
     label: "Pages"
@@ -71,4 +61,4 @@ collections:
     slug: "{{slug}}"
     fields:
       - { label: "Title", name: "title", widget: "string" }
-     
+      - { label: "Body (AI)", name: "body", widget: "ai" }

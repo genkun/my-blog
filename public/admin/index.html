@@ -724,139 +724,252 @@
     <script src="https://unpkg.com/decap-cms@3/dist/decap-cms.js"></script>
     
 
-<!-- ========================= -->
-<!-- SMART AUTO-FILL (AI, SLUG, DATES, COVER IMAGE) -->
-<!-- ========================= -->
-<script>
-(function () {
-  /*** Helpers ***/
-  function slugify(input) {
-    return (input || '')
-      .normalize('NFD').replace(/\p{Diacritic}/gu, '') // bỏ dấu tiếng Việt
-      .toLowerCase().trim()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .replace(/\s+/g, '-').replace(/-+/g, '-');
-  }
-
-  // Trả về 'YYYY-MM-DD HH:mm' theo local time
-  function formatNow() {
-    const d = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    const yyyy = d.getFullYear();
-    const mm = pad(d.getMonth() + 1);
-    const dd = pad(d.getDate());
-    const hh = pad(d.getHours());
-    const mi = pad(d.getMinutes());
-    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
-  }
-
-  // Gọi backend AI để viết nội dung từ title
-  async function aiWriteFromTitle(title) {
-    // Bạn đã có /api/ai/generate — dùng prompt ngắn + commit=false để chỉ lấy nội dung
-    const resp = await fetch('/api/ai/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt: `Viết một bài ngắn, chuẩn Markdown, dựa trên tiêu đề: "${title}". Bao gồm mở bài, 2-3 đoạn nội dung, và kết luận.`,
-        commit: false
-      })
-    });
-    const j = await resp.json();
-    // Giả định API trả { ok: true, content: '...' }
-    return j && j.ok ? j.content : '';
-  }
-
-  // Gọi backend AI để tạo ảnh bìa từ title (ưu tiên lưu vào repo/media)
-  async function aiCoverFromTitle(title) {
-    // Thử endpoint chuyên ảnh (nếu bạn có)
-    try {
-      const r1 = await fetch('/api/ai/generate-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: `Ảnh bìa minh hoạ cho: ${title}`, commit: true })
+  <!-- ========================= -->
+    <!-- PREVIEW TEMPLATES + CSS   -->
+    <!-- ========================= -->
+    <script type="module">
+      const BlogPreview = createClass({
+        render: function () {
+          const entry = this.props.entry;
+          const title = entry.getIn(['data', 'title']);
+          const cover = entry.getIn(['data', 'image']);
+          const coverSrc = cover && this.props.getAsset(cover);
+          return h('article', { className: 'preview preview-blog' }, [
+            h('h1', {}, title || '(Chưa có tiêu đề)'),
+            coverSrc ? h('img', { src: coverSrc.toString(), alt: title || 'cover' }) : null,
+            h('div', { className: 'content' }, this.props.widgetFor('body')),
+          ]);
+        },
       });
-      const j1 = await r1.json();
-      if (j1 && j1.ok && j1.path) return j1.path;
-    } catch (e) { /* fallback dưới */ }
+      CMS.registerPreviewTemplate('blog', BlogPreview);
 
-    // Fallback: dùng /api/ai/generate chỉ tạo asset (không tạo bài)
-    try {
-      const r2 = await fetch('/api/ai/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: `Tạo 1 ảnh minh hoạ bìa cho chủ đề: "${title}"`,
-          commit: true,
-          imagesCount: 1,
-          onlyAssets: true
-        })
+      const PagePreview = createClass({
+        render: function () {
+          const entry = this.props.entry;
+          return h('main', { className: 'preview preview-page' }, [
+            h('h2', {}, entry.getIn(['data', 'title']) || '(Chưa có tiêu đề)'),
+            h('section', {}, this.props.widgetFor('body')),
+          ]);
+        },
       });
-      const j2 = await r2.json();
-      if (j2 && j2.ok && Array.isArray(j2.assets) && j2.assets.length) {
-        // Ưu tiên path asset vừa commit vào repo
-        return j2.assets[0].path || j2.assets[0].url || '';
+      CMS.registerPreviewTemplate('pages', PagePreview);
+
+      CMS.registerPreviewStyle('/admin/styles.css');
+    </script>
+
+    <!-- ========================= -->
+    <!-- CUSTOM WIDGETS            -->
+    <!-- ========================= -->
+    <script>
+      function ulid() {
+        const abc = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+        const encTime = (n, len = 10) => { let s=''; while(len--) { s = abc[n % 32] + s; n = Math.floor(n / 32); } return s; };
+        const encRand = (len = 16) => Array.from({ length: len }, () => abc[Math.floor(Math.random() * 32)]).join('');
+        return encTime(Date.now()) + encRand();
       }
-    } catch (e) { /* tiếp tục fallback */ }
+      const UlidControl = createClass({
+        componentDidMount: function () { if (!this.props.value) this.props.onChange(ulid()); },
+        handleNew: function () { this.props.onChange(ulid()); },
+        render: function () {
+          return h('div', {}, [
+            h('input', { id: this.props.forID, className: this.props.classNameWrapper, type: 'text', readOnly: true, value: this.props.value || '' }),
+            h('button', { type: 'button', onClick: this.handleNew, style: { marginTop: '6px' } }, 'Tạo ULID mới'),
+          ]);
+        },
+      });
+      CMS.registerWidget('ulid', UlidControl);
 
-    // Fallback cuối: placeholder online (không lưu repo)
-    const t = encodeURIComponent(title);
-    return `https://dummyimage.com/1200x630/0b7285/ffffff&text=${t}`;
-  }
+      const SlugControl = createClass({
+        toSlug: function (s) {
+          return (s || '')
+            .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+            .toLowerCase().trim()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/\s+/g, '-').replace(/-+/g, '-');
+        },
+        handleGen: function () {
+          const titleField = this.props.field.get('source') || 'title';
+          const entry = this.props.entry || null;
+          const title = entry && entry.getIn(['data', titleField]);
+          const slug = this.toSlug(title || '');
+          if (slug) this.props.onChange(slug);
+        },
+        render: function () {
+          return h('div', {}, [
+            h('input', {
+              id: this.props.forID, className: this.props.classNameWrapper,
+              type: 'text', value: this.props.value || '', onInput: e => this.props.onChange(e.target.value)
+            }),
+            h('button', { type: 'button', onClick: this.handleGen, style: { marginTop: '6px' } }, 'Tạo từ tiêu đề'),
+          ]);
+        },
+      });
+      CMS.registerWidget('slugify', SlugControl);
 
-  /**
-   * Dùng CMS Events để can thiệp trước khi lưu (preSave).
-   * Tài liệu chính thức: CMS.registerEventListener({ name: 'preSave', handler })  [1](https://decapcms.org/docs/registering-events/)
-   */
-  CMS.registerEventListener({
-    name: 'preSave',
-    handler: async ({ entry }) => {
-      // entry: Immutable Map; cần trả về entry.get('data') (Immutable Map) đã chỉnh
-      let data = entry.get('data');
-      const title = String(data.get('title') || '').trim();
-
-      // (2) Slug (URL) tự động điền từ title (nếu trống)
-      if (title && (!data.get('slug') || String(data.get('slug')).trim() === '')) {
-        data = data.set('slug', slugify(title));
-      }
-
-      // (3) Publish Date tự cập nhật (lần đầu), và Updated luôn cập nhật
-      const now = formatNow();
-      if (!data.get('published') || String(data.get('published')).trim() === '') {
-        // Lần đầu set Publish Date
-        data = data.set('published', now);
-      }
-      // Luôn cập nhật Updated mỗi lần save
-      data = data.set('updated', now);
-
-      // (1) AI tự tạo nội dung body từ title (khi body đang trống)
-      const body = String(data.get('body') || '').trim();
-      if (title && !body) {
-        try {
-          const content = await aiWriteFromTitle(title);
-          if (content) data = data.set('body', content);
-        } catch (e) {
-          console.warn('[AI] Tạo nội dung thất bại:', e);
+      const AiControl = createClass({
+        getInitialState: function () { return { loading: false, prompt: '' }; },
+        handleGenerate: async function(){
+          if (!this.state.prompt) return alert('Nhập gợi ý cho AI');
+          this.setState({ loading: true });
+          try {
+            const resp = await fetch('/api/ai/generate', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ prompt: this.state.prompt, commit: false })
+            });
+            const json = await resp.json();
+            if (json.ok && json.content) this.props.onChange(json.content);
+            else alert('AI lỗi: ' + (json.error || 'unknown'));
+          } catch(e){ alert(e.message); }
+          finally { this.setState({ loading:false }); }
+        },
+        render: function () {
+          return h('div', { className:'ai-widget' }, [
+            h('textarea', { rows:3, placeholder:'Mô tả/ngữ cảnh để AI viết…',
+              value:this.state.prompt, onInput:e=>this.setState({ prompt:e.target.value }) }),
+            h('button', { type:'button', disabled:this.state.loading, onClick:this.handleGenerate, style:{ marginTop:'6px' } },
+              this.state.loading ? 'Đang tạo…' : 'AI đổ nội dung vào trường này'
+            )
+          ]);
         }
+      });
+      CMS.registerWidget('ai', AiControl);
+    </script>
+
+    <!-- ========================= -->
+    <!-- EDITOR COMPONENTS         -->
+    <!-- ========================= -->
+    <script>
+      CMS.registerEditorComponent({
+        id: "youtube",
+        label: "YouTube",
+        fields: [{ name: "id", label: "Video ID", widget: "string" }],
+        pattern: /^<iframe.*youtube\.com\/embed\/([^"]+).*<\/iframe>$/m,
+        fromBlock: (m) => ({ id: m[1] }),
+        toBlock: ({ id }) => `https://www.youtube.com/embed/${id}</iframe>`,
+        toPreview: ({ id }) => `https://img.youtube.com/vi/${id}/hqdefault.jpg`,
+      });
+
+      CMS.registerEditorComponent({
+        id: "callout",
+        label: "Callout",
+        fields: [
+          { name: "type", label: "Loại", widget: "select", options: ["info","warning","success"] },
+          { name: "text", label: "Nội dung", widget: "text" }
+        ],
+        pattern: /^<div class="callout (info|warning|success)">([\s\S]*?)<\/div>$/m,
+        fromBlock: m => ({ type: m[1], text: m[2].trim() }),
+        toBlock: ({ type, text }) => `<div class="callout ${type}">\n${text}\n<\/div>`,
+        toPreview: ({ type, text }) => `<div class="callout ${type}" style="padding:.75rem;border-left:4px solid #888;background:#f8fafc">${text}<\/div>`,
+      });
+
+      CMS.registerEditorComponent({
+        id: "gallery",
+        label: "Gallery",
+        fields: [{ name: "images", label: "Ảnh", widget: "list", field: { name: "src", label: "URL", widget: "string" } }],
+        pattern: /^<div class="gallery">([\s\S]*?)<\/div>$/m,
+        fromBlock: (m) => {
+          const imgs = Array.from(m[1].matchAll(/<img[^>]*src="([^"]+)"[^>]*>/g)).map(i => ({ src: i[1] }));
+          return { images: imgs };
+        },
+        toBlock: ({ images = [] }) => `<div class="gallery">\n${images.map(i => `${i.src}`).join('\n')}\n<\/div>`,
+        toPreview: ({ images = [] }) => `<div class="gallery" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">${images.map(i => `${i.src}`).join('')}<\/div>`,
+      });
+    </script>
+
+    <!-- ========================= -->
+    <!-- AUTO-FILL via preSave     -->
+    <!-- ========================= -->
+    <script>
+    (function(){
+      function slugify(input){
+        return (input || '')
+          .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+          .toLowerCase().trim()
+          .replace(/[^a-z0-9\s-]/g, '')
+          .replace(/\s+/g, '-').replace(/-+/g, '-');
+      }
+      function formatNow(){
+        const d = new Date();
+        const pad = (n)=>String(n).padStart(2,'0');
+        const yyyy=d.getFullYear(); const mm=pad(d.getMonth()+1); const dd=pad(d.getDate());
+        const hh=pad(d.getHours()); const mi=pad(d.getMinutes());
+        return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+      }
+      async function aiWriteFromTitle(title){
+        const resp = await fetch('/api/ai/generate', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: `Viết bài Markdown ngắn gọn, gồm mở bài, 2-3 đoạn thân bài và kết luận, dựa trên tiêu đề: "${title}".`,
+            commit: false
+          })
+        });
+        const j = await resp.json();
+        return j && j.ok ? (j.content || '') : '';
+      }
+      async function aiCoverFromTitle(title){
+        try{
+          const r1 = await fetch('/api/ai/generate-image', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: `Ảnh bìa minh hoạ cho: ${title}`, commit: true })
+          });
+          const j1 = await r1.json();
+          if (j1 && j1.ok && j1.path) return j1.path;
+        }catch(e){}
+        try{
+          const r2 = await fetch('/api/ai/generate', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: `Tạo 1 ảnh bìa minh hoạ cho "${title}"`, commit: true, imagesCount: 1, onlyAssets: true })
+          });
+          const j2 = await r2.json();
+          if (j2 && j2.ok && Array.isArray(j2.assets) && j2.assets.length) {
+            return j2.assets[0].path || j2.assets[0].url || '';
+          }
+        }catch(e){}
+        const t = encodeURIComponent(title);
+        return `https://dummyimage.com/1200x630/0b7285/ffffff&text=${t}`;
       }
 
-      // (4) Cover Image: nếu trống thì tạo bằng AI từ title
-      const image = String(data.get('image') || '').trim();
-      if (title && !image) {
-        try {
-          const imgPath = await aiCoverFromTitle(title);
-          if (imgPath) data = data.set('image', imgPath);
-        } catch (e) {
-          console.warn('[AI] Tạo ảnh bìa thất bại:', e);
+      CMS.registerEventListener({
+        name: 'preSave',
+        handler: async ({ entry }) => {
+          let data = entry.get('data');
+          const title = String(data.get('title') || '').trim();
+
+          // Slug tự điền từ title nếu trống
+          if (title && (!data.get('slug') || String(data.get('slug')).trim() === '')) {
+            data = data.set('slug', slugify(title));
+          }
+
+          // Publish Date lần đầu, Updated luôn cập nhật
+          const now = formatNow();
+          if (!data.get('published') || String(data.get('published')).trim() === '') {
+            data = data.set('published', now);
+          }
+          data = data.set('updated', now);
+
+          // Body: tự tạo từ title nếu đang trống
+          const body = String(data.get('body') || '').trim();
+          if (title && !body) {
+            try {
+              const content = await aiWriteFromTitle(title);
+              if (content) data = data.set('body', content);
+            } catch(e) { console.warn('[AI] Tạo nội dung thất bại:', e); }
+          }
+
+          // Cover Image: tạo bằng AI nếu trống
+          const image = String(data.get('image') || '').trim();
+          if (title && !image) {
+            try {
+              const imgPath = await aiCoverFromTitle(title);
+              if (imgPath) data = data.set('image', imgPath);
+            } catch(e){ console.warn('[AI] Tạo ảnh bìa thất bại:', e); }
+          }
+
+          return data;
         }
-      }
-
-      // Quan trọng: trả về data (Immutable Map) đã chỉnh sửa để CMS dùng khi lưu  [1](https://decapcms.org/docs/registering-events/)
-      return data;
-    }
-  });
-})();
-</script>
-``
+      });
+    })();
+    </script>
 
 
   </body>
