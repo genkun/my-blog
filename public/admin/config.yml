@@ -68,7 +68,7 @@ collections:
       - { label: "Draft", name: "draft", widget: "boolean", default: false }
       - { label: "Lang", name: "lang", widget: "string", default: "vi" }
       - { label: "Canonical URL", name: "canonical", widget: "string", required: false }
-      - { label: "Body", name: "body", widget: "autobody,Markdown" }
+      - { label: "Body", name: "body", widget: "markdown" }
 
   - name: "pages"
     label: "Pages"
@@ -78,4 +78,4 @@ collections:
     slug: "{{slug}}"
     fields:
       - { label: "Title", name: "title", widget: "string" }
-      - { label: "Body (AI)", name: "body", widget: "autobody" }
+      - { label: "Body (AI)", name: "body", widget: "markdown" }
