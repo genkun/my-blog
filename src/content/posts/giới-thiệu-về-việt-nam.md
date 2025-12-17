@@ -1,5 +1,5 @@
 ---
-id: 01KCP4HZ97H473TQG45QNVMEHM
+
 title: giới thiệu về việt nam
 slug: gioi-thieu-ve-viet-nam
 published: 2025-12-17 19:28
