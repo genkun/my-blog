@@ -43,25 +43,36 @@ collections:
     folder: "src/content/posts"
     create: true
     extension: "md"
-    slug: "{{slug}}"
-    summary: "{{title}} — {{published}}"
+    slug: "{{year}}-{{month}}-{{day}}-{{slug}}"
+    summary: "{{title}} — {{year}}/{{month}}/{{day}}"
     view_filters:
       - { label: "Drafts", field: draft, pattern: true }
     view_groups:
       - { label: "Năm đăng", field: published, pattern: "\\d{4}" }
     fields:
-      - { label: "Title",        name: "title",       widget: "string" }
-      - { label: "Description",  name: "description", widget: "text", required: false }
-      - { label: "Publish Date", name: "published",   widget: "datetime", format: "YYYY-MM-DD" }
-      - { label: "Updated",      name: "updated",     widget: "datetime", format: "YYYY-MM-DD", required: false }
-      - { label: "Cover Image",  name: "image",       widget: "image",    required: false }
-      - { label: "Tags",         name: "tags",        widget: "list",     required: false }
-      - { label: "Category",     name: "category",    widget: "string",   required: false }
-      - { label: "Author",       name: "author",      widget: "string",   default: "Genkun" }
-      - { label: "Slug (URL)",   name: "slug",        widget: "string" }
-      - { label: "Draft",        name: "draft",       widget: "boolean",  default: false }
-      - { label: "Lang",         name: "lang",        widget: "string",   default: "vi" }
-      - { label: "Canonical URL",name: "canonical",   widget: "string",   required: false }
-      - { label: "Body (Markdown)", name: "body",     widget: "markdown" }
+      - { label: "ID", name: "id", widget: "ulid" }
+      - { label: "Title", name: "title", widget: "string" }
+      - label: "Slug (URL)"
+        name: "slug"
+        widget: "autoslug"
+        hint: "Tự sinh từ Title"
+      - { label: "Publish Date", name: "published", widget: "datetime", format: "YYYY-MM-DD HH:mm", default: "{{now}}" }
+      - { label: "Updated", name: "updated", widget: "datetime", format: "YYYY-MM-DD HH:mm", required: false }
+      - { label: "Cover Image", name: "image", widget: "image", required: false }
+      - { label: "Tags", name: "tags", widget: "list", required: false }
+      - { label: "Category", name: "category", widget: "string", required: false }
+      - { label: "Author", name: "author", widget: "string", default: "hopthurac" }
+      - { label: "Draft", name: "draft", widget: "boolean", default: false }
+      - { label: "Lang", name: "lang", widget: "string", default: "vi" }
+      - { label: "Canonical URL", name: "canonical", widget: "string", required: false }
+      - { label: "Body", name: "body", widget: "autobody" }
 
-# (Tuỳ chọn) thử nghiệm local nếu chưa cấu hình OAuth GitHub
+  - name: "pages"
+    label: "Pages"
+    folder: "src/content/pages"
+    create: true
+    extension: "md"
+    slug: "{{slug}}"
+    fields:
+      - { label: "Title", name: "title", widget: "string" }
+      - { label: "Body (AI)", name: "body", widget: "autobody" }
