@@ -23,9 +23,9 @@
 
         function handleOAuthMessage(event) {
           try {
-            // Debugging: log incoming messages to help troubleshoot why
-            // dashboard doesn't receive the token.
+            // Debugging: log incoming messages để giúp troubleshoot
             console.debug('[OAuth] message received from', event.origin, 'data:', event.data);
+
             // Bảo vệ: chỉ xử lý message từ origin hợp lệ
             if (event.origin !== allowedOrigin) return;
 
@@ -55,16 +55,20 @@
                   console.info('[OAuth] Storing payload in localStorage for later', payload);
                   localStorage.setItem('decap_oauth_payload', JSON.stringify(payload));
 
-                  // ALSO: write the user object expected by Decap's LocalStorageAuthStore
-                  // so that the CMS can restore the session on next load.
+                  // ALSO: ghi user object mà Decap mong đợi (LocalStorageAuthStore)
                   try {
                     var userObj = Object.assign({}, payload, { backendName: 'github' });
                     var existing = localStorage.getItem('decap-cms-user');
                     if (existing !== JSON.stringify(userObj)) {
                       localStorage.setItem('decap-cms-user', JSON.stringify(userObj));
                       console.info('[OAuth] Also storing decap-cms-user for CMS restore', userObj);
-                    // hide login button when we store the user
-                    try { document.getElementById('gh-login') && (document.getElementById('gh-login').style.display = 'none'); } catch (e) {}
+                      // hide login button when we store the user
+                      try {
+                        var loginBtn = document.getElementById('gh-login');
+                        if (loginBtn) loginBtn.style.display = 'none';
+                      } catch (e) {}
+                    }
+                  } catch (e) {}
                   if (window._decap_tryDeliverOAuthPayload) window._decap_tryDeliverOAuthPayload();
                 }
 
@@ -86,19 +90,25 @@
 
               // ALSO: store the minimal user object expected by Decap
               try {
-                var userObj = { token: token, backendName: 'github' };
-                var existing = localStorage.getItem('decap-cms-user');
-                if (existing !== JSON.stringify(userObj)) {
-                  localStorage.setItem('decap-cms-user', JSON.stringify(userObj));
-                  console.info('[OAuth] Also storing decap-cms-user for CMS restore', userObj);
-                  try { document.getElementById('gh-login') && (document.getElementById('gh-login').style.display = 'none'); } catch (e) {}
-              var payload = { token: token, provider: 'github', backend: 'github' };
+                var userObj2 = { token: token, backendName: 'github' };
+                var existing2 = localStorage.getItem('decap-cms-user');
+                if (existing2 !== JSON.stringify(userObj2)) {
+                  localStorage.setItem('decap-cms-user', JSON.stringify(userObj2));
+                  console.info('[OAuth] Also storing decap-cms-user for CMS restore', userObj2);
+                  try {
+                    var loginBtn2 = document.getElementById('gh-login');
+                    if (loginBtn2) loginBtn2.style.display = 'none';
+                  } catch (e) {}
+                }
+              } catch (e) {}
+
+              var payload2 = { token: token, provider: 'github', backend: 'github' };
               if (window.CMS && typeof window.CMS.authCallback === 'function') {
                 console.info('[OAuth] Sending token payload to CMS.authCallback');
-                window.CMS.authCallback(payload);
+                window.CMS.authCallback(payload2);
               } else {
                 console.info('[OAuth] Storing token payload in localStorage for later');
-                localStorage.setItem('decap_oauth_payload', JSON.stringify(payload));
+                localStorage.setItem('decap_oauth_payload', JSON.stringify(payload2));
                 if (window._decap_tryDeliverOAuthPayload) window._decap_tryDeliverOAuthPayload();
               }
 
@@ -124,19 +134,16 @@
     <div id="nc-root"></div>
 
     <script>
-      // If Decap didn't receive the payload while it was initializing (e.g. popup
-      // sent message before CMS set authCallback), deliver any stored payload
-      // from localStorage to `window.CMS.authCallback` when CMS becomes ready.
+      // Nếu Decap chưa nhận payload khi init, thử giao lại payload đã lưu
       (function () {
-        // Expose deliver function so message handler can call it immediately
-        // after storing a payload, and so `storage` events can trigger it.
+        // Expose deliver function để message handler gọi ngay sau khi lưu payload
         window._decap_tryDeliverOAuthPayload = function tryDeliverStoredPayload() {
           try {
             var raw = localStorage.getItem('decap_oauth_payload');
             if (!raw) return false;
             var payload = JSON.parse(raw);
 
-            // If CMS exposes the expected auth callback, call it first
+            // Nếu CMS có authCallback, gọi trước
             if (window.CMS && typeof window.CMS.authCallback === 'function') {
               console.info('[OAuth] Delivering stored payload to CMS.authCallback', payload);
               try { window.CMS.authCallback(payload); } catch (e) { console.error('[OAuth] CMS.authCallback threw', e); }
@@ -144,8 +151,7 @@
               return true;
             }
 
-            // If authCallback is not available, ensure the Decap-local-storage
-            // user key is present so that the CMS will restore the user on load.
+            // Nếu chưa có authCallback, đảm bảo viết decap-cms-user để CMS restore
             try {
               var userObj = Object.assign({}, payload.token ? { token: payload.token } : payload, { backendName: 'github' });
               localStorage.setItem('decap-cms-user', JSON.stringify(userObj));
@@ -160,8 +166,7 @@
           }
         };
 
-        // Listen for storage events from the popup (fires in this window when
-        // another window on the same origin writes to localStorage).
+        // Lắng nghe storage event (khi popup ghi vào localStorage)
         window.addEventListener('storage', function (e) {
           if (e && e.key === 'decap_oauth_payload') {
             console.info('[OAuth] storage event: decap_oauth_payload changed, attempting delivery');
@@ -169,9 +174,7 @@
           }
         });
 
-        // Try immediately and poll while CMS initializes. Use a longer window
-        // because Decap may take a while to initialize (especially on slow
-        // networks or with large builds). Poll up to ~30s.
+        // Poll ~30s trong lúc CMS init
         if (!window._decap_tryDeliverOAuthPayload()) {
           var attempts = 0;
           var t = setInterval(function () {
@@ -184,15 +187,15 @@
         }
       })();
 
-      // Additional diagnostic: periodically log CMS availability and methods
+      // Diagnostic: log tình trạng CMS và thử các hook thay thế
       (function () {
         var seen = false;
         var d = setInterval(function () {
-            if (window.CMS) {
+          if (window.CMS) {
             if (!seen) console.info('[OAuth] window.CMS detected:', Object.keys(window.CMS));
             seen = true;
 
-            // If authCallback exists, try delivering again (harmless)
+            // Nếu có authCallback, thử giao lại (an toàn)
             if (typeof window.CMS.authCallback === 'function') {
               console.info('[OAuth] CMS.authCallback found; attempting delivery of stored payload');
               try { window._decap_tryDeliverOAuthPayload && window._decap_tryDeliverOAuthPayload(); } catch (e) { console.error('[OAuth] Delivery attempt threw', e); }
@@ -200,7 +203,7 @@
               return;
             }
 
-            // If authCallback is missing, look for other potential hooks (best-effort)
+            // Tìm các hook thay thế (best-effort)
             var alt = ['auth', 'authenticate', 'login', 'setUser', 'handleAuth'];
             for (var i = 0; i < alt.length; i++) {
               var name = alt[i];
@@ -220,14 +223,12 @@
               }
             }
 
-            // If no auth hook exists, but we have written decap-cms-user, reload
-            // once so that Decap can pick up the stored user on boot.
+            // Nếu không có hook, nhưng đã có decap-cms-user, reload một lần
             try {
               var stored = localStorage.getItem('decap-cms-user');
               var reloadFlag = localStorage.getItem('decap_oauth_reload_done');
               if (stored && !reloadFlag) {
                 console.warn('[OAuth] No CMS auth hook found — reloading once to allow CMS to restore decap-cms-user');
-                // mark reload so we don't loop
                 localStorage.setItem('decap_oauth_reload_done', '1');
                 setTimeout(function () { window.location.reload(); }, 250);
                 clearInterval(d);
@@ -237,7 +238,7 @@
               console.error('[OAuth] Error while considering reload:', e);
             }
           }
-          // stop after 30s
+          // stop sau 30s
           if (seen === false && typeof window._decap_cms_poll_attempts === 'undefined') window._decap_cms_poll_attempts = 0;
           window._decap_cms_poll_attempts = (window._decap_cms_poll_attempts || 0) + 1;
           if (window._decap_cms_poll_attempts >= 30) {
@@ -249,7 +250,7 @@
     </script>
 
     <script>
-      // Optional debug panel: visible when URL contains `oauth_debug=1`.
+      // Optional debug panel: visible khi URL có `oauth_debug=1`.
       (function () {
         if (!location.search.includes('oauth_debug=1')) return;
 
@@ -282,7 +283,11 @@
             var token = localStorage.getItem('decap_token');
             var user = localStorage.getItem('decap-cms-user');
             var reloadDone = localStorage.getItem('decap_oauth_reload_done');
-            info.textContent = 'payload: ' + (payload || '(none)') + '\n' + 'token: ' + (token || '(none)') + '\n' + 'decap-cms-user: ' + (user || '(none)') + '\n' + 'cookie: ' + (document.cookie || '(none)');
+            info.textContent =
+              'payload: ' + (payload || '(none)') + '\n' +
+              'token: ' + (token || '(none)') + '\n' +
+              'decap-cms-user: ' + (user || '(none)') + '\n' +
+              'cookie: ' + (document.cookie || '(none)');
             if (reloadDone) info.textContent += '\nreload-done: ' + reloadDone;
           }
 
@@ -351,10 +356,7 @@
             var origin = window.location.origin;
             var url = '/api/oauth/index?origin=' + encodeURIComponent(origin);
 
-            // IMPORTANT: Do NOT set `noopener`/`noreferrer` here because the
-            // OAuth callback uses `window.opener.postMessage()` to send the
-            // token back to the admin window. Using `noopener` would make
-            // `window.opener` null and break the flow.
+            // IMPORTANT: Không đặt noopener/noreferrer vì callback dùng window.opener.postMessage()
             var w = window.open(
               url,
               'github_oauth',
@@ -367,19 +369,19 @@
           });
         }
 
-        // Hide the login button if a user is already present (or when stored)
+        // Hide the login button nếu user đã tồn tại (hoặc khi được lưu)
         function updateLoginButtonVisibility() {
           try {
             var btn = document.getElementById('gh-login');
             if (!btn) return;
-            // If Decap-local user exists, hide the button
+            // Nếu đã có Decap-local user, ẩn nút
             var user = localStorage.getItem('decap-cms-user');
             if (user) {
               btn.style.display = 'none';
               return;
             }
 
-            // If CMS exposes a current user or similar, hide as well (best-effort)
+            // Nếu CMS expose current user hoặc tương tự, cũng ẩn
             if (window.CMS) {
               try {
                 if (typeof window.CMS.currentUser === 'function') {
@@ -390,7 +392,7 @@
                   return;
                 }
               } catch (e) {
-                // ignore; we only try best-effort checks
+                // ignore: chỉ best-effort
               }
             }
 
@@ -399,28 +401,29 @@
           } catch (e) { console.warn('[OAuth] updateLoginButtonVisibility failed', e); }
         }
 
-        // Update visibility now and when storage changes
+        // Cập nhật ngay và khi storage thay đổi
         updateLoginButtonVisibility();
         window.addEventListener('storage', function (e) {
           if (!e || (e.key !== 'decap-cms-user' && e.key !== 'decap_oauth_payload' && e.key !== 'decap_token')) return;
           updateLoginButtonVisibility();
         });
+
         // AI create button handler
         (function () {
           var aiBtn = document.getElementById('ai-create');
           if (!aiBtn) return;
 
-          // Expose a programmable create function so other UI can call it
+          // Expose hàm tạo để UI khác có thể gọi
           window._decap_ai_create = async function (opts) {
             opts = opts || {};
             var title = opts.title || prompt('Tiêu đề bài viết (bắt buộc):');
             if (!title) return alert('Tiêu đề bắt buộc');
             var promptText = typeof opts.prompt !== 'undefined' ? opts.prompt : prompt('Mô tả ngắn hoặc ghi chú cho AI (tuỳ chọn):', 'Viết một bài hướng dẫn ngắn về ...');
-            // Always publish directly to repository
+            // Luôn publish trực tiếp (commit)
             var commit = typeof opts.commit === 'boolean' ? opts.commit : true;
             aiBtn.disabled = true; aiBtn.textContent = 'Đang tạo...';
             try {
-              // include forceFake flag if user enabled mock AI in the UI (local dev only)
+              // include forceFake nếu bật mock trong UI (local dev only)
               var body = { title: title, prompt: promptText, commit: commit };
               try { if (localStorage.getItem('decap_ai_use_mock') === '1') body.forceFake = true; } catch (e) {}
               var resp = await fetch('/api/ai/generate', {
@@ -444,7 +447,10 @@
                 if (json.deploy_triggered) {
                   alert('Triển khai (deploy) đã được kích hoạt để cập nhật site. (Chờ vài phút cho build hoàn tất)');
                 }
-                try { document.getElementById('gh-login') && (document.getElementById('gh-login').style.display = 'none'); } catch (e) {}
+                try {
+                  var login = document.getElementById('gh-login');
+                  if (login) login.style.display = 'none';
+                } catch (e) {}
                 try {
                   if (opts && opts.autoOpenEditor && json.slug) {
                     var url = '/admin/#/collections/blog/new?slug=' + encodeURIComponent(json.slug);
@@ -504,7 +510,7 @@
             });
           }
 
-          // Floating quick-access AI button (visible when logged in)
+          // Floating quick-access AI button (visible khi logged in)
           function createFloatingAi() {
             try {
               var floatBtn = document.createElement('button');
@@ -525,14 +531,14 @@
               floatBtn.addEventListener('click', function () { window._decap_ai_create(); });
               document.body.appendChild(floatBtn);
 
-              function refresh() {
+              function refreshFloat() {
                 var user = localStorage.getItem('decap-cms-user');
                 floatBtn.style.display = user ? 'block' : 'none';
               }
-              refresh();
-              window.addEventListener('storage', refresh);
+              refreshFloat();
+              window.addEventListener('storage', refreshFloat);
 
-              // Also show a small assistant chat launcher
+              // Assistant chat launcher
               var chatBtn = document.createElement('button');
               chatBtn.id = 'ai-chat-float';
               chatBtn.title = 'Trợ lý AI';
@@ -555,7 +561,7 @@
           }
 
           function openAiChat() {
-            // create modal if not exists
+            // create modal nếu chưa có
             if (document.getElementById('ai-chat-modal')) return showAiChat();
             var modal = document.createElement('div');
             modal.id = 'ai-chat-modal';
@@ -576,7 +582,7 @@
                 <strong>Trợ lý AI</strong>
                 <div style="display:flex;gap:8px;align-items:center;">
                   <span id="ai-chat-status" style="font-size:12px;color:#6b7280;">Trạng thái: sẵn sàng</span>
-                  <label style="font-size:12px;color:#6b7280;display:flex;gap:6px;align-items:center;margin-left:6px">
+                  <label id="ai-chat-publish-label" style="font-size:12px;color:#6b7280;display:flex;gap:6px;align-items:center;margin-left:6px">
                     <input id="ai-chat-publish-toggle" type="checkbox" style="width:14px;height:14px" />
                     <span style="font-size:12px;color:#6b7280">Publish trực tiếp</span>
                   </label>
@@ -601,12 +607,10 @@
               if (s) sessionStorage.setItem('ai_admin_secret', s);
             });
 
-            // Always publish directly - hide the publish toggle
+            // Always publish trực tiếp - ẩn toggle publish đúng phần tử của chat
             try {
-              var pubLabel = document.querySelector('label');
-              if (pubLabel && pubLabel.textContent.includes('Publish')) {
-                pubLabel.style.display = 'none';
-              }
+              var pubLabel = document.getElementById('ai-chat-publish-label');
+              if (pubLabel) pubLabel.style.display = 'none';
             } catch (e) {}
 
             document.getElementById('ai-chat-send').addEventListener('click', async function () {
@@ -640,7 +644,7 @@
             });
 
             document.getElementById('ai-chat-exec').addEventListener('click', async function () {
-              // Use the last AI reply or the input as prompt for full auto generation
+              // Dùng reply AI cuối cùng hoặc input làm prompt cho auto generate
               var msgs = document.querySelectorAll('#ai-chat-messages .msg');
               var last = null;
               for (var i = msgs.length - 1; i >= 0; i--) {
@@ -648,11 +652,11 @@
               }
               if (!last) last = document.getElementById('ai-chat-input').value.trim();
               if (!last) return alert('Không có lệnh để thực thi');
-              // Confirm before publishing
+              // Confirm trước khi publish
               if (!confirm('Xác nhận: tạo bài và publish trực tiếp dựa trên:\n\n' + (last.slice(0,200) + (last.length>200?'...':'')))) return;
               try {
                 var secret = sessionStorage.getItem('ai_admin_secret');
-                // Always publish directly to repository
+                // Luôn publish trực tiếp
                 var body = { auto: true, prompt: last, commit: true, imagesCount: 2 };
                 if (secret) body.secret = secret;
                 try { if (localStorage.getItem('decap_ai_use_mock') === '1') body.forceFake = true; } catch (e) {}
@@ -661,7 +665,6 @@
                 var resp = await fetch('/api/ai/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
                 var json = await resp.json();
                 if (!json.ok) throw new Error(json.error || 'failed');
-                // If server committed (unexpected), report published; otherwise treat as draft
                 if (json.committed) {
                   appendChat('System', '✅ Bài đã được publish thành công: ' + (json.path || json.html_url || 'xem tại repo'));
                   try { document.getElementById('ai-chat-status').textContent = 'Trạng thái: Hoàn tất'; } catch (e) {}
@@ -697,21 +700,28 @@
               var box = document.getElementById('ai-chat-messages');
               var msgs = box.querySelectorAll('.msg');
               for (var i = msgs.length - 1; i >= 0; i--) {
-                if (msgs[i].dataset.role === 'ai' && msgs[i].textContent.indexOf('Đang nghĩ') === 0) { box.removeChild(msgs[i]); return; }
+                if (msgs[i].dataset.role === 'ai' && msgs[i].textContent.indexOf('Đang nghĩ') === 0) {
+                  box.removeChild(msgs[i]); return;
+                }
               }
             }
 
             showAiChat();
           }
 
-          function showAiChat() { var m = document.getElementById('ai-chat-modal'); if (m) m.style.display = 'flex'; }
+          function showAiChat() {
+            var m = document.getElementById('ai-chat-modal');
+            if (m) m.style.display = 'flex';
+          }
 
           if (document.readyState === 'complete' || document.readyState === 'interactive') createFloatingAi();
           else document.addEventListener('DOMContentLoaded', createFloatingAi);
-        })();      })();
+        })();
+      })();
     </script>
 
     <!-- ✅ NẠP Decap CMS v3 từ CDN: BẮT BUỘC nằm trong <body> -->
     <script src="https://unpkg.com/decap-cms@3/dist/decap-cms.js"></script>
   </body>
 </html>
+``
