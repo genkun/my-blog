@@ -1,0 +1,64 @@
+# ===============================
+# Decap CMS config (Vercel + editorial workflow)
+# ===============================
+backend:
+  name: github
+  repo: genkun/my-blog
+  branch: main
+  squash_merges: true
+  preview_context: vercel/deployment
+  commit_messages:
+    create: 'content({{collection}}): add "{{slug}}"'
+    update: 'content({{collection}}): update "{{slug}}"'
+    delete: 'content({{collection}}): delete "{{slug}}"'
+    uploadMedia: 'assets: add "{{path}}"'
+    deleteMedia: 'assets: remove "{{path}}"'
+    openAuthoring: '{{message}}'
+
+publish_mode: editorial_workflow
+
+media_folder: "src/assets/images"
+public_folder: "/assets/images"
+
+editor:
+  visualEditing: true
+
+collections:
+  - name: "blog"
+    label: "Bài viết"
+    folder: "src/content/posts"
+    create: true
+    extension: "md"
+    slug: "{{year}}-{{month}}-{{day}}-{{slug}}"
+    summary: "{{title}} — {{year}}/{{month}}/{{day}}"
+    view_filters:
+      - { label: "Drafts", field: draft, pattern: true }
+    view_groups:
+      - { label: "Năm đăng", field: published, pattern: "\\d{4}" }
+    fields:
+      - { label: "ID", name: "id", widget: "ulid" }
+      - { label: "Title", name: "title", widget: "string" }
+      - label: "Slug (URL)"
+        name: "slug"
+        widget: "slugify"
+        hint: "Sinh từ 'Title'"
+      - { label: "Publish Date", name: "published", widget: "datetime", format: "YYYY-MM-DD HH:mm" }
+      - { label: "Updated", name: "updated", widget: "datetime", format: "YYYY-MM-DD HH:mm", required: false }
+      - { label: "Cover Image", name: "image", widget: "image", required: false }
+      - { label: "Tags", name: "tags", widget: "list", required: false }
+      - { label: "Category", name: "category", widget: "string", required: false }
+      - { label: "Author", name: "author", widget: "string", default: "Genkun" }
+      - { label: "Draft", name: "draft", widget: "boolean", default: false }
+      - { label: "Lang", name: "lang", widget: "string", default: "vi" }
+      - { label: "Canonical URL", name: "canonical", widget: "string", required: false }
+      - { label: "Body", name: "body", widget: "markdown" }
+
+  - name: "pages"
+    label: "Pages"
+    folder: "src/content/pages"
+    create: true
+    extension: "md"
+    slug: "{{slug}}"
+    fields:
+      - { label: "Title", name: "title", widget: "string" }
+      - { label: "Body (AI)", name: "body", widget: "ai" }

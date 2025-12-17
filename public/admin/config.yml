@@ -1,24 +1,44 @@
+
 # ===============================
-# Decap CMS config (Vercel + editorial workflow)
+# Decap CMS config cho blog.thien.ac
+# Repo: genkun/my-blog (nhánh main)
 # ===============================
+
 backend:
   name: github
   repo: genkun/my-blog
   branch: main
-  squash_merges: true
-  preview_context: vercel/deployment
-  commit_messages:
-    create: 'content({{collection}}): add "{{slug}}"'
-    update: 'content({{collection}}): update "{{slug}}"'
-    delete: 'content({{collection}}): delete "{{slug}}"'
-    uploadMedia: 'assets: add "{{path}}"'
-    deleteMedia: 'assets: remove "{{path}}"'
-    openAuthoring: '{{message}}'
 
-publish_mode: editorial_workflow
+  # Dùng custom OAuth provider (serverless ở blog.thien.ac)
+  # => /api/oauth (index.js) sẽ 302 tới GitHub authorize
+  base_url: https://blog.thien.ac
+  auth_endpoint: /api/oauth
 
+  # Client ID & scope gửi kèm khi dùng custom provider
+  auth:
+    client_id: ${OAUTH_CLIENT_ID}   # đặt biến env hoặc thay giá trị thật
+    scope: repo
+
+# Thông điệp commit (đặt ở CẤP CAO NHẤT, không nằm trong backend)
+commit_messages:
+  create: "Create {{collection}} \"{{slug}}\""
+  update: "Update {{collection}} \"{{slug}}\""
+  delete: "Delete {{collection}} \"{{slug}}\""
+  uploadMedia: "Upload \"{{path}}\""
+  deleteMedia: "Delete \"{{path}}\""
+
+# Lưu ảnh trong repo & dùng ảnh trên site
 media_folder: "src/assets/images"
-public_folder: "/assets/images"
+public_folder: "/src/assets/images"   # đổi lại nếu site thực sự dùng /src/assets/images
+
+# Publish mode controls how posts are persisted to the repository.
+# - `editorial_workflow`: creates Pull Requests for changes (review required)
+# - `simple`: commits directly to the repository (no PR, immediate publish)
+#
+# If you want posts to be committed and synchronized automatically (no PR),
+# use `simple`. Make sure the OAuth token has `repo` scope and the authenticated
+# user/app has write permission to the repository.
+publish_mode: simple
 
 editor:
   visualEditing: true
@@ -29,36 +49,25 @@ collections:
     folder: "src/content/posts"
     create: true
     extension: "md"
-    slug: "{{year}}-{{month}}-{{day}}-{{slug}}"
-    summary: "{{title}} — {{year}}/{{month}}/{{day}}"
+    slug: "{{slug}}"
+    summary: "{{title}} — {{published}}"
     view_filters:
       - { label: "Drafts", field: draft, pattern: true }
     view_groups:
       - { label: "Năm đăng", field: published, pattern: "\\d{4}" }
     fields:
-      - { label: "ID", name: "id", widget: "ulid" }
-      - { label: "Title", name: "title", widget: "string" }
-      - label: "Slug (URL)"
-        name: "slug"
-        widget: "slugify"
-        hint: "Sinh từ 'Title'"
-      - { label: "Publish Date", name: "published", widget: "datetime", format: "YYYY-MM-DD HH:mm" }
-      - { label: "Updated", name: "updated", widget: "datetime", format: "YYYY-MM-DD HH:mm", required: false }
-      - { label: "Cover Image", name: "image", widget: "image", required: false }
-      - { label: "Tags", name: "tags", widget: "list", required: false }
-      - { label: "Category", name: "category", widget: "string", required: false }
-      - { label: "Author", name: "author", widget: "string", default: "Genkun" }
-      - { label: "Draft", name: "draft", widget: "boolean", default: false }
-      - { label: "Lang", name: "lang", widget: "string", default: "vi" }
-      - { label: "Canonical URL", name: "canonical", widget: "string", required: false }
-      - { label: "Body", name: "body", widget: "markdown" }
+      - { label: "Title",        name: "title",       widget: "string" }
+      - { label: "Description",  name: "description", widget: "text", required: false }
+      - { label: "Publish Date", name: "published",   widget: "datetime", format: "YYYY-MM-DD" }
+      - { label: "Updated",      name: "updated",     widget: "datetime", format: "YYYY-MM-DD", required: false }
+      - { label: "Cover Image",  name: "image",       widget: "image",    required: false }
+      - { label: "Tags",         name: "tags",        widget: "list",     required: false }
+      - { label: "Category",     name: "category",    widget: "string",   required: false }
+      - { label: "Author",       name: "author",      widget: "string",   default: "hopthurac" }
+      - { label: "Slug (URL)",   name: "slug",        widget: "string" }
+      - { label: "Draft",        name: "draft",       widget: "boolean",  default: false }
+      - { label: "Lang",         name: "lang",        widget: "string",   default: "vi" }
+      - { label: "Canonical URL",name: "canonical",   widget: "string",   required: false }
+      - { label: "Body (Markdown)", name: "body",     widget: "markdown" }
 
-  - name: "pages"
-    label: "Pages"
-    folder: "src/content/pages"
-    create: true
-    extension: "md"
-    slug: "{{slug}}"
-    fields:
-      - { label: "Title", name: "title", widget: "string" }
-      - { label: "Body (AI)", name: "body", widget: "ai" }
+# (Tuỳ chọn) thử nghiệm local nếu chưa cấu hình OAuth GitHub
