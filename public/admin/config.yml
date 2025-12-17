@@ -20,12 +20,15 @@ backend:
     scope: repo
 
 # Thông điệp commit (đặt ở CẤP CAO NHẤT, không nằm trong backend)
-commit_messages:
-  create: "Create {{collection}} \"{{slug}}\""
-  update: "Update {{collection}} \"{{slug}}\""
-  delete: "Delete {{collection}} \"{{slug}}\""
-  uploadMedia: "Upload \"{{path}}\""
-  deleteMedia: "Delete \"{{path}}\""
+  squash_merges: true
+  preview_context: vercel/deployment
+  commit_messages:
+    create: 'content({{collection}}): add "{{slug}}"'
+    update: 'content({{collection}}): update "{{slug}}"'
+    delete: 'content({{collection}}): delete "{{slug}}"'
+    uploadMedia: 'assets: add "{{path}}"'
+    deleteMedia: 'assets: remove "{{path}}"'
+    openAuthoring: '{{message}}'
 
 # Lưu ảnh trong repo & dùng ảnh trên site
 media_folder: "src/assets/images"
