@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="vi">
   <head>
@@ -7,721 +6,397 @@
     <meta name="robots" content="noindex" />
     <title>Content Manager</title>
 
-    <!-- Khai báo đường dẫn config.yml cho Decap CMS (PHẢI là thẻ link đúng) -->
-    <!-- ✓ ĐẶT trong <head> -->
+    <!-- Khai báo đường dẫn config.yml cho Decap CMS (chuẩn) -->
     <link rel="cms-config-url" href="/admin/config.yml" type="text/yaml" />
 
-    <!-- Listener OAuth: nhận token từ popup và điều hướng vào dashboard.
-         ✓ ĐẶT trong <head> để sẵn sàng trước khi popup gửi postMessage -->
+    <!-- ===== OAuth listener (GitHub) ===== -->
     <script>
       (function () {
-        // ✅ Đường dẫn dashboard sau khi đăng nhập (theo yêu cầu)
         var DASHBOARD_PATH = '/admin/#/collections';
-
-        // Chỉ nhận message từ đúng origin của site
         var allowedOrigin = window.location.origin;
-
         function handleOAuthMessage(event) {
           try {
-            // Debugging: log incoming messages để giúp troubleshoot
-            console.debug('[OAuth] message received from', event.origin, 'data:', event.data);
-
-            // Bảo vệ: chỉ xử lý message từ origin hợp lệ
             if (event.origin !== allowedOrigin) return;
-
-            var data = event.data;
-
-            // Decap/trình duyệt có thể phát nhiều message dạng object → chỉ xử lý chuỗi
-            if (typeof data !== 'string') return;
-
-            // Các prefix callback có thể gửi
-            var P_JSON_1 = 'authorization:github:success:';      // Decap v3 (JSON payload)
-            var P_JSON_2 = 'netlify-cms-oauth-provider:';         // Provider cũ (JSON)
-            var P_TOKEN_1 = 'authorization:github:access_token:'; // Token chuỗi
-            var P_TOKEN_2 = 'authorization:github:success:';      // Có thể gửi token chuỗi sau prefix
-
-            // --- Nhánh JSON payload ---
+            var data = event.data; if (typeof data !== 'string') return;
+            var P_JSON_1 = 'authorization:github:success:';
+            var P_JSON_2 = 'netlify-cms-oauth-provider:';
+            var P_TOKEN_1 = 'authorization:github:access_token:';
+            var P_TOKEN_2 = 'authorization:github:success:';
             if (data.startsWith(P_JSON_1) || data.startsWith(P_JSON_2)) {
               var idx = data.indexOf('{');
               if (idx >= 0) {
                 var payload = JSON.parse(data.slice(idx));
-
-                // Nếu Decap đã sẵn sàng, báo kết quả đăng nhập cho CMS
                 if (window.CMS && typeof window.CMS.authCallback === 'function') {
-                  console.info('[OAuth] Sending payload to CMS.authCallback', payload);
                   window.CMS.authCallback(payload);
                 } else {
-                  // Dự phòng: lưu payload để CMS đọc sau khi init
-                  console.info('[OAuth] Storing payload in localStorage for later', payload);
                   localStorage.setItem('decap_oauth_payload', JSON.stringify(payload));
-
-                  // ALSO: ghi user object mà Decap mong đợi (LocalStorageAuthStore)
-                  try {
-                    var userObj = Object.assign({}, payload, { backendName: 'github' });
-                    var existing = localStorage.getItem('decap-cms-user');
-                    if (existing !== JSON.stringify(userObj)) {
-                      localStorage.setItem('decap-cms-user', JSON.stringify(userObj));
-                      console.info('[OAuth] Also storing decap-cms-user for CMS restore', userObj);
-                      // hide login button when we store the user
-                      try {
-                        var loginBtn = document.getElementById('gh-login');
-                        if (loginBtn) loginBtn.style.display = 'none';
-                      } catch (e) {}
-                    }
-                  } catch (e) {}
-                  if (window._decap_tryDeliverOAuthPayload) window._decap_tryDeliverOAuthPayload();
+                  localStorage.setItem('decap-cms-user', JSON.stringify(Object.assign({}, payload, { backendName: 'github' })));
                 }
-
-                // Điều hướng vào dashboard
-                window.location.replace(DASHBOARD_PATH);
-                return;
+                window.location.replace(DASHBOARD_PATH); return;
               }
-              // Không có JSON → tiếp tục nhánh token chuỗi phía dưới
             }
-
-            // --- Nhánh token chuỗi ---
             if (data.startsWith(P_TOKEN_1) || (data.startsWith(P_TOKEN_2) && data.indexOf('{') === -1)) {
-              var token = data.substring(data.lastIndexOf(':') + 1).trim();
-              if (!token) return;
-
-              // Lưu token cho ứng dụng/CMS dùng về sau
-              console.info('[OAuth] Received token, saving to localStorage (decap_token)');
+              var token = data.substring(data.lastIndexOf(':') + 1).trim(); if (!token) return;
               localStorage.setItem('decap_token', token);
-
-              // ALSO: store the minimal user object expected by Decap
-              try {
-                var userObj2 = { token: token, backendName: 'github' };
-                var existing2 = localStorage.getItem('decap-cms-user');
-                if (existing2 !== JSON.stringify(userObj2)) {
-                  localStorage.setItem('decap-cms-user', JSON.stringify(userObj2));
-                  console.info('[OAuth] Also storing decap-cms-user for CMS restore', userObj2);
-                  try {
-                    var loginBtn2 = document.getElementById('gh-login');
-                    if (loginBtn2) loginBtn2.style.display = 'none';
-                  } catch (e) {}
-                }
-              } catch (e) {}
-
+              localStorage.setItem('decap-cms-user', JSON.stringify({ token: token, backendName: 'github' }));
               var payload2 = { token: token, provider: 'github', backend: 'github' };
-              if (window.CMS && typeof window.CMS.authCallback === 'function') {
-                console.info('[OAuth] Sending token payload to CMS.authCallback');
-                window.CMS.authCallback(payload2);
-              } else {
-                console.info('[OAuth] Storing token payload in localStorage for later');
-                localStorage.setItem('decap_oauth_payload', JSON.stringify(payload2));
-                if (window._decap_tryDeliverOAuthPayload) window._decap_tryDeliverOAuthPayload();
-              }
-
-              // Điều hướng vào dashboard
-              window.location.replace(DASHBOARD_PATH);
-              return;
+              if (window.CMS && typeof window.CMS.authCallback === 'function') window.CMS.authCallback(payload2);
+              else localStorage.setItem('decap_oauth_payload', JSON.stringify(payload2));
+              window.location.replace(DASHBOARD_PATH); return;
             }
-
-            // Các message khác: bỏ qua
-          } catch (e) {
-            console.error('[OAuth] Lỗi xử lý message:', e);
-          }
+          } catch (e) { console.error('[OAuth] error:', e); }
         }
-
-        // Gắn listener SỚM
         window.addEventListener('message', handleOAuthMessage, false);
       })();
     </script>
   </head>
 
   <body>
-    <!-- Phần tử mount bắt buộc cho Decap CMS -->
+    <!-- Mount bắt buộc cho Decap CMS -->
     <div id="nc-root"></div>
 
-    <script>
-      // Nếu Decap chưa nhận payload khi init, thử giao lại payload đã lưu
-      (function () {
-        // Expose deliver function để message handler gọi ngay sau khi lưu payload
-        window._decap_tryDeliverOAuthPayload = function tryDeliverStoredPayload() {
-          try {
-            var raw = localStorage.getItem('decap_oauth_payload');
-            if (!raw) return false;
-            var payload = JSON.parse(raw);
-
-            // Nếu CMS có authCallback, gọi trước
-            if (window.CMS && typeof window.CMS.authCallback === 'function') {
-              console.info('[OAuth] Delivering stored payload to CMS.authCallback', payload);
-              try { window.CMS.authCallback(payload); } catch (e) { console.error('[OAuth] CMS.authCallback threw', e); }
-              localStorage.removeItem('decap_oauth_payload');
-              return true;
-            }
-
-            // Nếu chưa có authCallback, đảm bảo viết decap-cms-user để CMS restore
-            try {
-              var userObj = Object.assign({}, payload.token ? { token: payload.token } : payload, { backendName: 'github' });
-              localStorage.setItem('decap-cms-user', JSON.stringify(userObj));
-              console.info('[OAuth] Wrote decap-cms-user for CMS restore', userObj);
-            } catch (e) { console.warn('[OAuth] Failed to write decap-cms-user', e); }
-
-            console.debug('[OAuth] Stored payload present but CMS not ready yet');
-            return false;
-          } catch (e) {
-            console.error('[OAuth] Error delivering stored payload:', e);
-            return false;
-          }
-        };
-
-        // Lắng nghe storage event (khi popup ghi vào localStorage)
-        window.addEventListener('storage', function (e) {
-          if (e && e.key === 'decap_oauth_payload') {
-            console.info('[OAuth] storage event: decap_oauth_payload changed, attempting delivery');
-            window._decap_tryDeliverOAuthPayload();
-          }
-        });
-
-        // Poll ~30s trong lúc CMS init
-        if (!window._decap_tryDeliverOAuthPayload()) {
-          var attempts = 0;
-          var t = setInterval(function () {
-            attempts++;
-            if (window._decap_tryDeliverOAuthPayload() || attempts >= 30) {
-              if (attempts >= 30) console.warn('[OAuth] CMS did not become ready within timeout');
-              clearInterval(t);
-            }
-          }, 1000);
-        }
-      })();
-
-      // Diagnostic: log tình trạng CMS và thử các hook thay thế
-      (function () {
-        var seen = false;
-        var d = setInterval(function () {
-          if (window.CMS) {
-            if (!seen) console.info('[OAuth] window.CMS detected:', Object.keys(window.CMS));
-            seen = true;
-
-            // Nếu có authCallback, thử giao lại (an toàn)
-            if (typeof window.CMS.authCallback === 'function') {
-              console.info('[OAuth] CMS.authCallback found; attempting delivery of stored payload');
-              try { window._decap_tryDeliverOAuthPayload && window._decap_tryDeliverOAuthPayload(); } catch (e) { console.error('[OAuth] Delivery attempt threw', e); }
-              clearInterval(d);
-              return;
-            }
-
-            // Tìm các hook thay thế (best-effort)
-            var alt = ['auth', 'authenticate', 'login', 'setUser', 'handleAuth'];
-            for (var i = 0; i < alt.length; i++) {
-              var name = alt[i];
-              if (typeof window.CMS[name] === 'function') {
-                console.warn('[OAuth] Found alternative auth method on CMS:', name, '— attempting handshake');
-                try {
-                  var raw = localStorage.getItem('decap_oauth_payload');
-                  var p = raw ? JSON.parse(raw) : null;
-                  if (p) {
-                    window.CMS[name](p);
-                    console.info('[OAuth] Called CMS.' + name + ' with payload');
-                    localStorage.removeItem('decap_oauth_payload');
-                  }
-                } catch (e) { console.error('[OAuth] Fallback call threw:', e); }
-                clearInterval(d);
-                return;
-              }
-            }
-
-            // Nếu không có hook, nhưng đã có decap-cms-user, reload một lần
-            try {
-              var stored = localStorage.getItem('decap-cms-user');
-              var reloadFlag = localStorage.getItem('decap_oauth_reload_done');
-              if (stored && !reloadFlag) {
-                console.warn('[OAuth] No CMS auth hook found — reloading once to allow CMS to restore decap-cms-user');
-                localStorage.setItem('decap_oauth_reload_done', '1');
-                setTimeout(function () { window.location.reload(); }, 250);
-                clearInterval(d);
-                return;
-              }
-            } catch (e) {
-              console.error('[OAuth] Error while considering reload:', e);
-            }
-          }
-          // stop sau 30s
-          if (seen === false && typeof window._decap_cms_poll_attempts === 'undefined') window._decap_cms_poll_attempts = 0;
-          window._decap_cms_poll_attempts = (window._decap_cms_poll_attempts || 0) + 1;
-          if (window._decap_cms_poll_attempts >= 30) {
-            console.warn('[OAuth] CMS not exposing authCallback after timeout');
-            clearInterval(d);
-          }
-        }, 1000);
-      })();
-    </script>
-
-    <script>
-      // Optional debug panel: visible khi URL có `oauth_debug=1`.
-      (function () {
-        if (!location.search.includes('oauth_debug=1')) return;
-
-        function createPanel() {
-          var panel = document.createElement('div');
-          panel.style.position = 'fixed';
-          panel.style.right = '12px';
-          panel.style.bottom = '12px';
-          panel.style.zIndex = 99999;
-          panel.style.background = 'rgba(0,0,0,0.7)';
-          panel.style.color = '#fff';
-          panel.style.padding = '8px';
-          panel.style.borderRadius = '6px';
-          panel.style.fontSize = '13px';
-          panel.innerHTML = `
-            <div style="margin-bottom:6px"><b>OAuth Debug</b></div>
-            <div id="oauth-debug-info" style="max-width:260px;white-space:pre-wrap;margin-bottom:6px"></div>
-            <button id="oauth-debug-deliver" style="margin-right:6px">Deliver payload</button>
-            <button id="oauth-debug-reload" style="margin-right:6px">Force reload</button>
-            <button id="oauth-debug-clear">Clear storage</button>
-          `;
-          document.body.appendChild(panel);
-
-          var info = panel.querySelector('#oauth-debug-info');
-          var btn = panel.querySelector('#oauth-debug-deliver');
-          var clearBtn = panel.querySelector('#oauth-debug-clear');
-
-          function refreshInfo() {
-            var payload = localStorage.getItem('decap_oauth_payload');
-            var token = localStorage.getItem('decap_token');
-            var user = localStorage.getItem('decap-cms-user');
-            var reloadDone = localStorage.getItem('decap_oauth_reload_done');
-            info.textContent =
-              'payload: ' + (payload || '(none)') + '\n' +
-              'token: ' + (token || '(none)') + '\n' +
-              'decap-cms-user: ' + (user || '(none)') + '\n' +
-              'cookie: ' + (document.cookie || '(none)');
-            if (reloadDone) info.textContent += '\nreload-done: ' + reloadDone;
-          }
-
-          btn.addEventListener('click', function () {
-            try {
-              var raw = localStorage.getItem('decap_oauth_payload');
-              var p = raw ? JSON.parse(raw) : null;
-              if (!p) return alert('No payload stored');
-              if (window.CMS && typeof window.CMS.authCallback === 'function') {
-                window.CMS.authCallback(p);
-                alert('Delivered payload to CMS.authCallback');
-              } else {
-                alert('CMS not ready yet');
-              }
-            } catch (e) { alert('Error: ' + e.message); }
-            refreshInfo();
-          });
-
-          var reloadBtn = panel.querySelector('#oauth-debug-reload');
-          reloadBtn.addEventListener('click', function () {
-            if (!confirm('Reload the admin page now?')) return;
-            try { localStorage.setItem('decap_oauth_reload_done', '1'); } catch (e) {}
-            window.location.reload();
-          });
-
-          clearBtn.addEventListener('click', function () {
-            localStorage.removeItem('decap_oauth_payload');
-            localStorage.removeItem('decap_token');
-            localStorage.removeItem('decap-cms-user');
-            localStorage.removeItem('decap_oauth_reload_done');
-            refreshInfo();
-            alert('Cleared payload/token from localStorage');
-          });
-
-          refreshInfo();
-        }
-
-        // Defer panel creation until DOM ready
-        if (document.readyState === 'complete' || document.readyState === 'interactive') createPanel();
-        else document.addEventListener('DOMContentLoaded', createPanel);
-      })();
-    </script>
-
-    <!-- (Tuỳ chọn) Nút mở popup OAuth để đăng nhập GitHub -->
-    <div style="margin: 1rem; display:flex; gap:8px; align-items:center;">
-      <button id="gh-login" type="button" style="padding: .5rem .75rem; font-size: 14px;">
-        Đăng nhập GitHub
-      </button>
-      <button id="ai-toggle-mock" type="button" title="Bật mock provider (chỉ dành cho dev)" style="padding: .5rem .75rem; font-size: 14px;">
-        Mock AI: OFF
-      </button>
-      <button id="ai-create" type="button" title="Yêu cầu OPENAI_API_KEY trên server; nếu có AI_GITHUB_TOKEN thì sẽ commit vào repo" style="padding: .5rem .75rem; font-size: 14px;">
-        Tạo bài bằng AI
-      </button>
-      <button id="ai-create-auto" type="button" title="AI tự tạo tiêu đề, mô tả, nội dung, hình ảnh và publish tự động" style="padding: .5rem .75rem; font-size: 14px;">
-        Tạo AI (Auto)
-      </button>
+    <!-- ===== Admin Helper Banner ===== -->
+    <div id="admin-helper" style="padding:.5rem 1rem;background:#111827;color:#fff;display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+      <strong>Admin Helper</strong>
+      <span id="helper-user">User: (chưa đăng nhập)</span>
+      <span id="helper-repo">Repo: (config.yml)</span>
+      <span id="helper-branch">Branch: (config.yml)</span>
+      <span id="helper-ai">AI: trạng thái…</span>
+      <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <a href="/admin/config.yml" target="_blank" style="color:#93c5fd;text-decoration:underline">Mở config.yml</a>
+        <button id="helper-prompt" style="padding:.35rem .6rem;border:none;border-radius:6px;background:#0b7285;color:#fff">Prompt</button>
+        <button id="helper-debug" style="padding:.35rem .6rem;border:none;border-radius:6px;background:#6b7280;color:#fff">Debug</button>
+      </span>
     </div>
 
+    <!-- Thanh hành động: Đăng nhập & AI -->
+    <div style="margin:1rem;display:flex;gap:8px;align-items:center;">
+      <button id="gh-login" type="button" style="padding:.5rem .75rem;font-size:14px;">Đăng nhập GitHub</button>
+      <button id="ai-toggle-mock" type="button" title="Bật mock provider (dev)" style="padding:.5rem .75rem;font-size:14px;">Mock AI: OFF</button>
+      <button id="ai-create" type="button" title="Yêu cầu OPENAI_API_KEY trên server; nếu có AI_GITHUB_TOKEN sẽ commit" style="padding:.5rem .75rem;font-size:14px;">Tạo bài bằng AI</button>
+      <button id="ai-create-auto" type="button" title="AI tự tạo & publish" style="padding:.5rem .75rem;font-size:14px;">Tạo AI (Auto)</button>
+    </div>
+
+    <!-- ===== Login + AI create + Floating ===== -->
     <script>
-      (function () {
-        // Nút mở popup OAuth
-        var btn = document.getElementById('gh-login');
-        if (btn) {
-          btn.addEventListener('click', function () {
+      (function(){
+        // Login popup
+        var loginBtn = document.getElementById('gh-login');
+        if (loginBtn) {
+          loginBtn.addEventListener('click', function(){
             var origin = window.location.origin;
             var url = '/api/oauth/index?origin=' + encodeURIComponent(origin);
-
-            // IMPORTANT: Không đặt noopener/noreferrer vì callback dùng window.opener.postMessage()
-            var w = window.open(
-              url,
-              'github_oauth',
-              'width=800,height=700'
-            );
-
-            if (!w) {
-              alert('Không thể mở popup. Hãy tắt chặn popup và thử lại.');
-            }
+            var w = window.open(url, 'github_oauth', 'width=800,height=700');
+            if (!w) alert('Không thể mở popup. Hãy tắt chặn popup.');
           });
         }
-
-        // Hide the login button nếu user đã tồn tại (hoặc khi được lưu)
-        function updateLoginButtonVisibility() {
-          try {
-            var btn = document.getElementById('gh-login');
-            if (!btn) return;
-            // Nếu đã có Decap-local user, ẩn nút
-            var user = localStorage.getItem('decap-cms-user');
-            if (user) {
-              btn.style.display = 'none';
-              return;
-            }
-
-            // Nếu CMS expose current user hoặc tương tự, cũng ẩn
-            if (window.CMS) {
-              try {
-                if (typeof window.CMS.currentUser === 'function') {
-                  var cu = window.CMS.currentUser();
-                  if (cu) { btn.style.display = 'none'; return; }
-                } else if (window.CMS.user || window.CMS.currentUser) {
-                  btn.style.display = 'none';
-                  return;
-                }
-              } catch (e) {
-                // ignore: chỉ best-effort
-              }
-            }
-
-            // otherwise show
-            btn.style.display = '';
-          } catch (e) { console.warn('[OAuth] updateLoginButtonVisibility failed', e); }
+        function updateLoginButtonVisibility(){
+          var user = localStorage.getItem('decap-cms-user');
+          var btn = document.getElementById('gh-login'); if (!btn) return;
+          btn.style.display = user ? 'none' : '';
+          document.getElementById('helper-user').textContent = 'User: ' + (user ? 'đã đăng nhập' : '(chưa đăng nhập)');
         }
-
-        // Cập nhật ngay và khi storage thay đổi
         updateLoginButtonVisibility();
-        window.addEventListener('storage', function (e) {
-          if (!e || (e.key !== 'decap-cms-user' && e.key !== 'decap_oauth_payload' && e.key !== 'decap_token')) return;
-          updateLoginButtonVisibility();
-        });
+        window.addEventListener('storage', function(e){ if (e && e.key === 'decap-cms-user') updateLoginButtonVisibility(); });
 
-        // AI create button handler
-        (function () {
-          var aiBtn = document.getElementById('ai-create');
-          if (!aiBtn) return;
+        // Admin Helper: repo/branch từ config (hiển thị dạng mô tả)
+        try {
+          fetch('/admin/config.yml').then(r=>r.text()).then(t=>{
+            var repo = (t.match(/repo:\s*(.*)/)||[])[1]||'(config.yml)';
+            var branch = (t.match(/branch:\s*(.*)/)||[])[1]||'(config.yml)';
+            document.getElementById('helper-repo').textContent = 'Repo: ' + repo.trim();
+            document.getElementById('helper-branch').textContent = 'Branch: ' + branch.trim();
+          });
+        } catch(e){}
 
-          // Expose hàm tạo để UI khác có thể gọi
-          window._decap_ai_create = async function (opts) {
+        // AI status ping (optional endpoint)
+        (async function(){
+          try {
+            const r = await fetch('/api/ai/status');
+            const j = await r.json();
+            document.getElementById('helper-ai').textContent = 'AI: ' + (j.ok ? (j.message||'OK') : ('Lỗi: '+(j.error||'unknown')));
+          } catch(e){ document.getElementById('helper-ai').textContent = 'AI: không xác định'; }
+        })();
+
+        // AI create
+        var aiBtn = document.getElementById('ai-create');
+        if (aiBtn) {
+          window._decap_ai_create = async function(opts){
             opts = opts || {};
             var title = opts.title || prompt('Tiêu đề bài viết (bắt buộc):');
             if (!title) return alert('Tiêu đề bắt buộc');
-            var promptText = typeof opts.prompt !== 'undefined' ? opts.prompt : prompt('Mô tả ngắn hoặc ghi chú cho AI (tuỳ chọn):', 'Viết một bài hướng dẫn ngắn về ...');
-            // Luôn publish trực tiếp (commit)
+            var promptText = typeof opts.prompt !== 'undefined' ? opts.prompt : prompt('Mô tả ngắn cho AI (tuỳ chọn):', 'Viết một bài hướng dẫn ngắn về ...');
             var commit = typeof opts.commit === 'boolean' ? opts.commit : true;
             aiBtn.disabled = true; aiBtn.textContent = 'Đang tạo...';
             try {
-              // include forceFake nếu bật mock trong UI (local dev only)
               var body = { title: title, prompt: promptText, commit: commit };
-              try { if (localStorage.getItem('decap_ai_use_mock') === '1') body.forceFake = true; } catch (e) {}
-              var resp = await fetch('/api/ai/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-              });
-
+              try { if (localStorage.getItem('decap_ai_use_mock') === '1') body.forceFake = true; } catch(e){}
+              var resp = await fetch('/api/ai/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
               var json = await resp.json();
-              if (!json.ok) {
-                if (json.error === 'missing_api_key') {
-                  alert('OPENAI_API_KEY chưa được cấu hình trên server. Xem docs/ai.md để biết cách cài đặt hoặc chạy scripts/enable-dev-openai.sh cho local dev.');
-                } else {
-                  alert('Lỗi tạo bài: ' + (json.error || JSON.stringify(json)));
-                }
-                return json;
-              }
-
+              if (!json.ok) { alert('Lỗi tạo bài: ' + (json.error || JSON.stringify(json))); return json; }
               if (json.committed) {
-                alert('Bài đã được tạo: ' + (json.path || json.html_url || ''));
-                if (json.deploy_triggered) {
-                  alert('Triển khai (deploy) đã được kích hoạt để cập nhật site. (Chờ vài phút cho build hoàn tất)');
-                }
-                try {
-                  var login = document.getElementById('gh-login');
-                  if (login) login.style.display = 'none';
-                } catch (e) {}
-                try {
-                  if (opts && opts.autoOpenEditor && json.slug) {
-                    var url = '/admin/#/collections/blog/new?slug=' + encodeURIComponent(json.slug);
-                    window.location.href = url;
-                    return json;
-                  }
-                } catch (e) { /* ignore */ }
-                setTimeout(function () { window.location.reload(); }, 500);
-              } else {
-                alert('Bài đã được tạo nhưng chưa publish. Vui lòng thử lại hoặc kiểm tra cài đặt server.');
-              }
+                alert('Bài đã tạo: ' + (json.path || json.html_url || ''));
+                if (json.deploy_triggered) alert('Đã kích hoạt deploy, chờ vài phút.');
+                setTimeout(function(){ window.location.reload(); }, 500);
+              } else { alert('Bài đã tạo nhưng chưa publish.'); }
               return json;
-            } catch (e) {
-              console.error('AI create failed', e);
-              alert('Lỗi khi tạo bài bằng AI: ' + e.message);
-              return { ok: false, error: e.message };
-            } finally {
-              aiBtn.disabled = false; aiBtn.textContent = 'Tạo bài bằng AI';
-            }
+            } catch(e){ alert('Lỗi AI: ' + e.message); return { ok:false, error:e.message }; }
+            finally { aiBtn.disabled = false; aiBtn.textContent = 'Tạo bài bằng AI'; }
           };
+          aiBtn.addEventListener('click', function(){ window._decap_ai_create(); });
+        }
 
-          aiBtn.addEventListener('click', function () { window._decap_ai_create(); });
-
-          // Mock toggle button
-          (function () {
-            var mockBtn = document.getElementById('ai-toggle-mock');
-            if (!mockBtn) return;
-            function refresh() {
-              try {
-                var on = localStorage.getItem('decap_ai_use_mock') === '1';
-                mockBtn.textContent = 'Mock AI: ' + (on ? 'ON' : 'OFF');
-                mockBtn.style.background = on ? '#107a7a' : '';
-                mockBtn.style.color = on ? '#fff' : '';
-              } catch (e) {}
-            }
-            mockBtn.addEventListener('click', function () {
-              try {
-                var cur = localStorage.getItem('decap_ai_use_mock') === '1';
-                localStorage.setItem('decap_ai_use_mock', cur ? '0' : '1');
-                refresh();
-                alert('Mock AI ' + (cur ? 'disabled' : 'enabled') + '. Note: force mock is honored only in non-production environments.');
-              } catch (e) { alert('Không thể thay đổi setting: ' + e.message); }
-            });
-            refresh();
-            window.addEventListener('storage', refresh);
-          })();
-
-          var autoBtn = document.getElementById('ai-create-auto');
-          if (autoBtn) {
-            autoBtn.addEventListener('click', async function () {
-              if (!confirm('Tạo bài tự động bằng AI và publish (commit) ngay?')) return;
-              var count = prompt('Số lượng hình ảnh (mặc định 2):', '2');
-              var n = parseInt(count, 10);
-              if (isNaN(n) || n < 0) n = 2;
-              var openEditor = confirm('Mở trình soạn thảo sau khi tạo (nên dùng để kiểm tra)?');
-              await window._decap_ai_create({ auto: true, commit: true, imagesCount: n, autoOpenEditor: openEditor });
-            });
-          }
-
-          // Floating quick-access AI button (visible khi logged in)
-          function createFloatingAi() {
-            try {
-              var floatBtn = document.createElement('button');
-              floatBtn.id = 'ai-create-float';
-              floatBtn.title = 'Tạo bài bằng AI';
-              floatBtn.textContent = 'Tạo AI';
-              floatBtn.style.position = 'fixed';
-              floatBtn.style.right = '12px';
-              floatBtn.style.bottom = '72px';
-              floatBtn.style.zIndex = 99998;
-              floatBtn.style.padding = '.5rem .65rem';
-              floatBtn.style.borderRadius = '6px';
-              floatBtn.style.background = '#0b7285';
-              floatBtn.style.color = '#fff';
-              floatBtn.style.border = 'none';
-              floatBtn.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
-              floatBtn.style.cursor = 'pointer';
-              floatBtn.addEventListener('click', function () { window._decap_ai_create(); });
-              document.body.appendChild(floatBtn);
-
-              function refreshFloat() {
-                var user = localStorage.getItem('decap-cms-user');
-                floatBtn.style.display = user ? 'block' : 'none';
-              }
-              refreshFloat();
-              window.addEventListener('storage', refreshFloat);
-
-              // Assistant chat launcher
-              var chatBtn = document.createElement('button');
-              chatBtn.id = 'ai-chat-float';
-              chatBtn.title = 'Trợ lý AI';
-              chatBtn.textContent = 'AI';
-              chatBtn.style.position = 'fixed';
-              chatBtn.style.right = '12px';
-              chatBtn.style.bottom = '12px';
-              chatBtn.style.zIndex = 99999;
-              chatBtn.style.padding = '.5rem .65rem';
-              chatBtn.style.borderRadius = '999px';
-              chatBtn.style.background = '#111827';
-              chatBtn.style.color = '#fff';
-              chatBtn.style.border = 'none';
-              chatBtn.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
-              chatBtn.style.cursor = 'pointer';
-              chatBtn.addEventListener('click', openAiChat);
-              document.body.appendChild(chatBtn);
-
-            } catch (e) { console.warn('Could not create floating AI button', e); }
-          }
-
-          function openAiChat() {
-            // create modal nếu chưa có
-            if (document.getElementById('ai-chat-modal')) return showAiChat();
-            var modal = document.createElement('div');
-            modal.id = 'ai-chat-modal';
-            modal.style.position = 'fixed';
-            modal.style.right = '12px';
-            modal.style.bottom = '80px';
-            modal.style.width = '360px';
-            modal.style.maxHeight = '70vh';
-            modal.style.zIndex = 100000;
-            modal.style.background = '#fff';
-            modal.style.border = '1px solid rgba(0,0,0,0.08)';
-            modal.style.borderRadius = '8px';
-            modal.style.boxShadow = '0 8px 24px rgba(0,0,0,0.15)';
-            modal.style.display = 'flex';
-            modal.style.flexDirection = 'column';
-            modal.innerHTML = `
-              <div style="padding:8px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between">
-                <strong>Trợ lý AI</strong>
-                <div style="display:flex;gap:8px;align-items:center;">
-                  <span id="ai-chat-status" style="font-size:12px;color:#6b7280;">Trạng thái: sẵn sàng</span>
-                  <label id="ai-chat-publish-label" style="font-size:12px;color:#6b7280;display:flex;gap:6px;align-items:center;margin-left:6px">
-                    <input id="ai-chat-publish-toggle" type="checkbox" style="width:14px;height:14px" />
-                    <span style="font-size:12px;color:#6b7280">Publish trực tiếp</span>
-                  </label>
-                  <div>
-                    <button id="ai-chat-secret" style="margin-right:6px;font-size:12px">Set secret</button>
-                    <button id="ai-chat-close" style="font-size:12px">×</button>
-                  </div>
-                </div>
-              </div>
-              <div id="ai-chat-messages" style="padding:8px;overflow:auto;flex:1;font-size:13px"></div>
-              <div style="padding:8px;border-top:1px solid #eee;display:flex;gap:6px;align-items:center">
-                <input id="ai-chat-input" placeholder="Nhập lệnh (ví dụ: viết bài về ... , tạo tiêu đề, tóm tắt)" style="flex:1;padding:.5rem;border:1px solid #ddd;border-radius:6px" />
-                <button id="ai-chat-send" style="padding:.5rem .6rem">Gửi</button>
-                <button id="ai-chat-exec" style="padding:.5rem .6rem">Thực thi</button>
-              </div>
-            `;
-            document.body.appendChild(modal);
-
-            document.getElementById('ai-chat-close').addEventListener('click', function () { modal.style.display = 'none'; });
-            document.getElementById('ai-chat-secret').addEventListener('click', function () {
-              var s = prompt('Nhập AI_ADMIN_SECRET (lưu trong session chỉ lần này):');
-              if (s) sessionStorage.setItem('ai_admin_secret', s);
-            });
-
-            // Always publish trực tiếp - ẩn toggle publish đúng phần tử của chat
-            try {
-              var pubLabel = document.getElementById('ai-chat-publish-label');
-              if (pubLabel) pubLabel.style.display = 'none';
-            } catch (e) {}
-
-            document.getElementById('ai-chat-send').addEventListener('click', async function () {
-              var input = document.getElementById('ai-chat-input');
-              var text = input.value && input.value.trim();
-              if (!text) return;
-              appendChat('Bạn', text);
-              input.value = '';
-              appendChat('AI', 'Đang nghĩ...');
-              try {
-                var body = { prompt: text };
-                var secret = sessionStorage.getItem('ai_admin_secret');
-                if (secret) body.secret = secret;
-                try { if (localStorage.getItem('decap_ai_use_mock') === '1') body.forceFake = true; } catch (e) {}
-                var rsp = await fetch('/api/ai/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-                var j = await rsp.json();
-                if (!j.ok) {
-                  popLastAi();
-                  appendChat('AI', 'Lỗi: ' + (j.message || j.error || 'AI returned error'));
-                  return;
-                }
-                popLastAi();
-                appendChat('AI', j.reply);
-                try { document.getElementById('ai-chat-status').textContent = 'Trạng thái: Trả lời nhận được'; } catch (e) {}
-              } catch (e) {
-                popLastAi();
-                appendChat('AI', 'Lỗi: ' + (e.message || e));
-              }
-              // always scroll messages into view
-              document.getElementById('ai-chat-messages').scrollTop = document.getElementById('ai-chat-messages').scrollHeight;
-            });
-
-            document.getElementById('ai-chat-exec').addEventListener('click', async function () {
-              // Dùng reply AI cuối cùng hoặc input làm prompt cho auto generate
-              var msgs = document.querySelectorAll('#ai-chat-messages .msg');
-              var last = null;
-              for (var i = msgs.length - 1; i >= 0; i--) {
-                if (msgs[i].dataset.role === 'ai') { last = msgs[i].dataset.text; break; }
-              }
-              if (!last) last = document.getElementById('ai-chat-input').value.trim();
-              if (!last) return alert('Không có lệnh để thực thi');
-              // Confirm trước khi publish
-              if (!confirm('Xác nhận: tạo bài và publish trực tiếp dựa trên:\n\n' + (last.slice(0,200) + (last.length>200?'...':'')))) return;
-              try {
-                var secret = sessionStorage.getItem('ai_admin_secret');
-                // Luôn publish trực tiếp
-                var body = { auto: true, prompt: last, commit: true, imagesCount: 2 };
-                if (secret) body.secret = secret;
-                try { if (localStorage.getItem('decap_ai_use_mock') === '1') body.forceFake = true; } catch (e) {}
-                // Update UI status
-                try { document.getElementById('ai-chat-status').textContent = 'Trạng thái: Đang tạo và publish...'; } catch (e) {}
-                var resp = await fetch('/api/ai/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-                var json = await resp.json();
-                if (!json.ok) throw new Error(json.error || 'failed');
-                if (json.committed) {
-                  appendChat('System', '✅ Bài đã được publish thành công: ' + (json.path || json.html_url || 'xem tại repo'));
-                  try { document.getElementById('ai-chat-status').textContent = 'Trạng thái: Hoàn tất'; } catch (e) {}
-                  setTimeout(function () { window.location.reload(); }, 1500);
-                } else {
-                  appendChat('System', 'Lỗi: Bài không thể publish. Vui lòng kiểm tra cài đặt server.');
-                  try { document.getElementById('ai-chat-status').textContent = 'Trạng thái: Lỗi publish'; } catch (e) {}
-                }
-              } catch (e) {
-                appendChat('System', 'Lỗi khi tạo bài: ' + (e.message || e));
-                try { document.getElementById('ai-chat-status').textContent = 'Trạng thái: Lỗi tạo bài'; } catch (err) {}
-              }
-            });
-
-            function appendChat(who, txt) {
-              var box = document.getElementById('ai-chat-messages');
-              var div = document.createElement('div');
-              div.className = 'msg';
-              var role = who === 'AI' ? 'ai' : (who === 'Bạn' ? 'user' : 'sys');
-              div.dataset.role = role;
-              div.dataset.text = txt;
-              div.style.marginBottom = '8px';
-              div.style.padding = '6px';
-              div.style.borderRadius = '6px';
-              if (role === 'ai') { div.style.background = '#f8fafc'; div.style.border = '1px solid #eef2ff'; }
-              else if (role === 'user') { div.style.background = '#0b7285'; div.style.color = '#fff'; }
-              else { div.style.background = '#eef2ff'; }
-              div.textContent = who + ': ' + txt;
-              box.appendChild(div);
-              box.scrollTop = box.scrollHeight;
-            }
-            function popLastAi() {
-              var box = document.getElementById('ai-chat-messages');
-              var msgs = box.querySelectorAll('.msg');
-              for (var i = msgs.length - 1; i >= 0; i--) {
-                if (msgs[i].dataset.role === 'ai' && msgs[i].textContent.indexOf('Đang nghĩ') === 0) {
-                  box.removeChild(msgs[i]); return;
-                }
-              }
-            }
-
-            showAiChat();
-          }
-
-          function showAiChat() {
-            var m = document.getElementById('ai-chat-modal');
-            if (m) m.style.display = 'flex';
-          }
-
-          if (document.readyState === 'complete' || document.readyState === 'interactive') createFloatingAi();
-          else document.addEventListener('DOMContentLoaded', createFloatingAi);
+        // Mock toggle
+        (function(){
+          var mockBtn = document.getElementById('ai-toggle-mock');
+          if (!mockBtn) return;
+          function refresh(){ try { var on = localStorage.getItem('decap_ai_use_mock') === '1'; mockBtn.textContent = 'Mock AI: ' + (on ? 'ON' : 'OFF'); mockBtn.style.background = on ? '#107a7a' : ''; mockBtn.style.color = on ? '#fff' : ''; } catch(e){} }
+          mockBtn.addEventListener('click', function(){ try { var cur = localStorage.getItem('decap_ai_use_mock') === '1'; localStorage.setItem('decap_ai_use_mock', cur ? '0' : '1'); refresh(); alert('Mock AI ' + (cur ? 'disabled' : 'enabled')); } catch(e){ alert('Không thể đổi mock: ' + e.message); } });
+          refresh(); window.addEventListener('storage', refresh);
         })();
+
+        // Floating quick-access
+        function createFloating(){
+          try {
+            var floatBtn = document.createElement('button');
+            floatBtn.id = 'ai-create-float'; floatBtn.title = 'Tạo bài bằng AI'; floatBtn.textContent = 'Tạo AI';
+            Object.assign(floatBtn.style, { position:'fixed', right:'12px', bottom:'72px', zIndex:99998, padding:'.5rem .65rem', borderRadius:'6px', background:'#0b7285', color:'#fff', border:'none', boxShadow:'0 2px 6px rgba(0,0,0,0.2)', cursor:'pointer' });
+            floatBtn.addEventListener('click', function(){ window._decap_ai_create(); });
+            document.body.appendChild(floatBtn);
+            function refreshFloat(){ var user = localStorage.getItem('decap-cms-user'); floatBtn.style.display = user ? 'block' : 'none'; }
+            refreshFloat(); window.addEventListener('storage', refreshFloat);
+          } catch(e){}
+        }
+        if (document.readyState === 'complete' || document.readyState === 'interactive') createFloating();
+        else document.addEventListener('DOMContentLoaded', createFloating);
+
+        // Admin Helper buttons
+        document.getElementById('helper-prompt').addEventListener('click', function(){
+          var btn = document.getElementById('ai-prompt-picker'); if (btn) btn.click();
+        });
+        document.getElementById('helper-debug').addEventListener('click', function(){ toggleDebugPanel(true); });
       })();
     </script>
 
-    <!-- ✅ NẠP Decap CMS v3 từ CDN: BẮT BUỘC nằm trong <body> -->
+    <!-- ===== Decap CMS bundle ===== -->
     <script src="https://unpkg.com/decap-cms@3/dist/decap-cms.js"></script>
+
+    <!-- ========================= -->
+    <!-- Preview + CSS -->
+    <!-- ========================= -->
+    <script type="module">
+      const BlogPreview = createClass({
+        render: function () {
+          const entry = this.props.entry;
+          const title = entry.getIn(['data', 'title']);
+          const cover = entry.getIn(['data', 'image']);
+          const coverSrc = cover && this.props.getAsset(cover);
+          return h('article', { className: 'preview preview-blog' }, [
+            h('h1', {}, title || '(Chưa có tiêu đề)'),
+            coverSrc ? h('img', { src: coverSrc.toString(), alt: title || 'cover' }) : null,
+            h('div', { className: 'content' }, this.props.widgetFor('body')),
+          ]);
+        },
+      });
+      CMS.registerPreviewTemplate('blog', BlogPreview);
+      const PagePreview = createClass({
+        render: function () {
+          const entry = this.props.entry;
+          return h('main', { className: 'preview preview-page' }, [
+            h('h2', {}, entry.getIn(['data', 'title']) || '(Chưa có tiêu đề)'),
+            h('section', {}, this.props.widgetFor('body')),
+          ]);
+        },
+      });
+      CMS.registerPreviewTemplate('pages', PagePreview);
+      CMS.registerPreviewStyle('/admin/styles.css');
+    </script>
+
+    <!-- ========================= -->
+    <!-- Widgets & Editor Components -->
+    <!-- ========================= -->
+    <script>
+      // ULID
+      function ulid(){ const abc='0123456789ABCDEFGHJKMNPQRSTVWXYZ'; const encTime=(n,len=10)=>{ let s=''; while(len--){ s=abc[n%32]+s; n=Math.floor(n/32);} return s; }; const encRand=(len=16)=>Array.from({length:len},()=>abc[Math.floor(Math.random()*32)]).join(''); return encTime(Date.now())+encRand(); }
+      const UlidControl=createClass({ componentDidMount:function(){ if(!this.props.value) this.props.onChange(ulid()); }, handleNew:function(){ this.props.onChange(ulid()); }, render:function(){ return h('div',{},[ h('input',{ id:this.props.forID, className:this.props.classNameWrapper, type:'text', readOnly:true, value:this.props.value||'' }), h('button',{ type:'button', onClick:this.handleNew, style:{ marginTop:'6px' } },'Tạo ULID mới') ]); } });
+      CMS.registerWidget('ulid', UlidControl);
+
+      // AutoSlug: tự cập nhật từ Title
+      const AutoSlugControl = createClass({
+        toSlug: function (s) {
+          return (s || '')
+            .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+            .toLowerCase().trim()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/\s+/g, '-').replace(/-+/g, '-');
+        },
+        componentDidMount: function () {
+          this._timer = setInterval(() => {
+            const entry = this.props.entry; if (!entry) return;
+            const curSlug = String(this.props.value || '').trim();
+            const titleField = this.props.field.get('source') || 'title';
+            const title = entry.getIn(['data', titleField]);
+            const nextSlug = this.toSlug(title || '');
+            if (nextSlug && (!curSlug || curSlug !== nextSlug)) {
+              this.props.onChange(nextSlug);
+            }
+          }, 500);
+        },
+        componentWillUnmount: function () { if (this._timer) clearInterval(this._timer); },
+        render: function () {
+          return h('input', {
+            id: this.props.forID,
+            className: this.props.classNameWrapper,
+            type: 'text', value: this.props.value || '',
+            onInput: e => this.props.onChange(e.target.value),
+            placeholder: 'Tự sinh từ Title'
+          });
+        },
+      });
+      CMS.registerWidget('autoslug', AutoSlugControl);
+
+      // AutoBody: tự gọi AI điền nội dung theo Title
+      const AutoBodyControl = createClass({
+        getInitialState: function () { return { loading: false, lastTitle: '' }; },
+        buildPrompt: function (title) {
+          if (window.buildBodyPrompt) return window.buildBodyPrompt(title);
+          return [
+            `Viết bài blog Markdown về: "${title}".`,
+            `Giọng thân thiện, rõ ràng cho người mới; ~500–700 từ.`,
+            `Cấu trúc: H1 (tiêu đề), mở bài, H2: bối cảnh, H2: các bước (bullet), H2: lưu ý, kết luận.`,
+            `Định dạng Markdown chuẩn, không dùng HTML thừa.`
+          ].join('\n');
+        },
+        fetchAI: async function (title) {
+          this.setState({ loading: true });
+          try {
+            const resp = await fetch('/api/ai/generate', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ prompt: this.buildPrompt(title), commit: false })
+            });
+            const json = await resp.json();
+            if (json.ok && json.content) this.props.onChange(json.content);
+          } catch (e) { console.warn('[AutoBody] AI lỗi:', e); }
+          finally { this.setState({ loading: false, lastTitle: title }); }
+        },
+        componentDidMount: function () {
+          const entry = this.props.entry;
+          const curBody = String(this.props.value || '').trim();
+          const title = entry && entry.getIn(['data', 'title']);
+          if (!curBody && title) this.fetchAI(String(title));
+          this._timer = setInterval(() => {
+            const e = this.props.entry; if (!e) return;
+            const t = String(e.getIn(['data', 'title']) || '');
+            const curBody2 = String(this.props.value || '').trim();
+            if (t && !curBody2 && t !== this.state.lastTitle) this.fetchAI(t);
+          }, 800);
+        },
+        componentWillUnmount: function () { if (this._timer) clearInterval(this._timer); },
+        render: function () {
+          return h('div', { className: 'autobody-widget' }, [
+            h('textarea', {
+              id: this.props.forID,
+              className: this.props.classNameWrapper,
+              rows: 12,
+              placeholder: this.state.loading ? 'Đang tạo nội dung...' : 'Nội dung sẽ tự tạo từ Title',
+              value: this.props.value || '',
+              onInput: e => this.props.onChange(e.target.value)
+            }),
+            this.state.loading ? h('div', { style: { marginTop: '6px', color: '#6b7280' } }, 'Đang gọi AI...') : null
+          ]);
+        },
+      });
+      CMS.registerWidget('autobody', AutoBodyControl);
+
+      // (Optional) AI widget thủ công
+      const AiControl=createClass({ getInitialState:function(){ return { loading:false, prompt:'' }; }, handleGenerate:async function(){ if(!this.state.prompt) return alert('Nhập gợi ý cho AI'); this.setState({ loading:true }); try { const resp=await fetch('/api/ai/generate',{ method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ prompt:this.state.prompt, commit:false }) }); const json=await resp.json(); if(json.ok && json.content) this.props.onChange(json.content); else alert('AI lỗi: ' + (json.error || 'unknown')); } catch(e){ alert(e.message); } finally { this.setState({ loading:false }); } }, render:function(){ return h('div',{ className:'ai-widget' },[ h('textarea',{ rows:3, placeholder:'Mô tả/ngữ cảnh để AI viết…', value:this.state.prompt, onInput:e=>this.setState({ prompt:e.target.value }) }), h('button',{ type:'button', disabled:this.state.loading, onClick:this.handleGenerate, style:{ marginTop:'6px' } }, this.state.loading?'Đang tạo…':'AI đổ nội dung vào trường này' ) ]); } });
+      CMS.registerWidget('ai', AiControl);
+
+      // Editor components
+      CMS.registerEditorComponent({ id:'youtube', label:'YouTube', fields:[{ name:'id', label:'Video ID', widget:'string' }], pattern:/^<iframe.*youtube\.com\/embed\/([^\"]+).*<\/iframe>$/m, fromBlock:(m)=>({ id:m[1] }), toBlock:({ id })=>`https://www.youtube.com/embed/${id}</iframe>`, toPreview:({ id })=>`https://img.youtube.com/vi/${id}/hqdefault.jpg` });
+      CMS.registerEditorComponent({ id:'callout', label:'Callout', fields:[ { name:'type', label:'Loại', widget:'select', options:['info','warning','success'] }, { name:'text', label:'Nội dung', widget:'text' } ], pattern:/^<div class=\"callout (info|warning|success)\">([\s\S]*?)<\/div>$/m, fromBlock:m=>({ type:m[1], text:m[2].trim() }), toBlock:({ type, text })=>`<div class=\"callout ${type}\">\n${text}\n<\/div>`, toPreview:({ type, text })=>`<div class=\"callout ${type}\" style=\"padding:.75rem;border-left:4px solid #888;background:#f8fafc\">${text}<\/div>` });
+      CMS.registerEditorComponent({ id:'gallery', label:'Gallery', fields:[{ name:'images', label:'Ảnh', widget:'list', field:{ name:'src', label:'URL', widget:'string' } }], pattern:/^<div class=\"gallery\">([\s\S]*?)<\/div>$/m, fromBlock:(m)=>{ const imgs=Array.from(m[1].matchAll(/<img[^>]*src=\"([^\"]+)\"[^>]*>/g)).map(i=>({ src:i[1] })); return { images: imgs }; }, toBlock:({ images=[] })=>`<div class=\"gallery\">\n${images.map(i=>`${i.src}`).join('\n')}\n<\/div>`, toPreview:({ images=[] })=>`<div class=\"gallery\" style=\"display:grid;grid-template-columns:repeat(3,1fr);gap:8px\">${images.map(i=>`${i.src}`).join('')}<\/div>` });
+    </script>
+
+    <!-- ========================= -->
+    <!-- AUTO-FILL via preSave + Prompt Picker (per-collection) + Debug -->
+    <!-- ========================= -->
+    <script>
+      // Helpers
+      function slugify(input){ return (input||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim().replace(/[^a-z0-9\s-]/g,'').replace(/\s+/g,'-').replace(/-+/g,'-'); }
+      function formatNow(){ const d=new Date(); const pad=(n)=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+      function getCurrentCollection(){ var hash=(location.hash||''); var m=hash.match(/#\/collections\/([^\/]+)/); return m?m[1]:'blog'; }
+
+      // Store keys (per-collection)
+      const PROMPT_STORE_KEYS={ preset:(col)=>`ai_prompt_preset:${col}`, bodyCustom:(col)=>`ai_prompt_custom_body:${col}`, coverCustom:(col)=>`ai_prompt_custom_cover:${col}` };
+      function getSelectedPreset(col){ return localStorage.getItem(PROMPT_STORE_KEYS.preset(col)) || 'friendly'; }
+      function setSelectedPreset(col,v){ localStorage.setItem(PROMPT_STORE_KEYS.preset(col), v); }
+      function getCustomBodyPrompt(col){ return localStorage.getItem(PROMPT_STORE_KEYS.bodyCustom(col)) || ''; }
+      function setCustomBodyPrompt(col,v){ localStorage.setItem(PROMPT_STORE_KEYS.bodyCustom(col), v||''); }
+      function getCustomCoverPrompt(col){ return localStorage.getItem(PROMPT_STORE_KEYS.coverCustom(col)) || ''; }
+      function setCustomCoverPrompt(col,v){ localStorage.setItem(PROMPT_STORE_KEYS.coverCustom(col), v||''); }
+
+      // Build prompts
+      window.buildBodyPrompt = function(title){
+        const col=getCurrentCollection(); const preset=getSelectedPreset(col);
+        if (preset==='expert_seo') {
+          const keywords=[]; return [
+            `Viết bài blog Markdown chuyên sâu về: "${title}"`,
+            `Giọng văn: chuyên gia, súc tích, dẫn chứng khi cần.`,
+            `Bao gồm:`,
+            `- Meta description 140–160 ký tự (\n > Meta: ...)`,
+            `- Mở bài (nêu vấn đề)`,
+            `- H2: Khái niệm/lý do`,
+            `- H2: Quy trình/Checklist (bullet)`,
+            `- H2: Ví dụ ngắn (nếu phù hợp)`,
+            `- Kết luận + CTA`,
+            `Tối ưu SEO: chèn tự nhiên các từ khóa: ${keywords.join(', ')}.`,
+            `Định dạng: Markdown; tránh chèn liên kết ngoài nếu không cần.`,
+          ].join('\n');
+        }
+        if (preset==='short_image') {
+          return [
+            `Viết bài blog Markdown ngắn gọn về: "${title}" (300–500 từ).`,
+            `Sau H1, chèn hình minh hoạ (URL/asset).`,
+            `Cấu trúc: mở bài, 2–3 mục nội dung (H2/H3), kết luận ngắn.`,
+            `Giọng thân thiện, dễ tiếp cận.`,
+          ].join('\n');
+        }
+        if (preset==='custom') {
+          const custom=(getCustomBodyPrompt(col)||'').trim(); if (custom) return custom.replace(/\$TITLE\b/g,title);
+        }
+        return [
+          `Viết bài blog Markdown về: "${title}".`,
+          `Giọng thân thiện, rõ ràng cho người mới; độ dài ~500–700 từ.`,
+          `Cấu trúc: H1, mở bài, H2: bối cảnh, H2: các bước (bullet), H2: lưu ý, kết luận.`,
+          `Định dạng Markdown chuẩn, không dùng HTML thừa.`,
+        ].join('\n');
+      };
+      function buildCoverPrompt(title){ const col=getCurrentCollection(); const preset=getSelectedPreset(col); if (preset==='custom'){ const c=(getCustomCoverPrompt(col)||'').trim(); if(c) return c.replace(/\$TITLE\b/g,title);} return [`Tạo ảnh bìa 1200x630, phong cách minimal, tương phản cao.`,`Chủ đề: "${title}". Không chèn chữ.`,`Bố cục rõ ràng, nền trầm; có điểm nhấn liên quan.`,`Xuất PNG/JPG chất lượng cao.`].join('\n'); }
+
+      // Rate-limit (per save)
+      const AI_LOCKS = { body: false, cover: false };
+      function getAutofillKey(){ const col=getCurrentCollection(); var hash=location.hash||''; var m=hash.match(/entries\/([^\/?#]+)/); var slug=m?m[1]:'new'; return `ai_autofilled:${col}:${slug}`; }
+      async function aiWriteFromTitle(title){ if(AI_LOCKS.body) return ''; AI_LOCKS.body=true; try{ const resp=await fetch('/api/ai/generate',{ method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ prompt: window.buildBodyPrompt(title), commit:false }) }); const j=await resp.json(); return j && j.ok ? (j.content||'') : ''; } catch(e){ return ''; } finally { AI_LOCKS.body=false; } }
+      async function aiCoverFromTitle(title){ if(AI_LOCKS.cover) return ''; AI_LOCKS.cover=true; try{ const r1=await fetch('/api/ai/generate-image',{ method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ prompt: buildCoverPrompt(title), commit:true }) }); const j1=await r1.json(); if(j1 && j1.ok && j1.path) return j1.path; } catch(e){} try{ const r2=await fetch('/api/ai/generate',{ method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ prompt: buildCoverPrompt(title), commit:true, imagesCount:1, onlyAssets:true }) }); const j2=await r2.json(); if(j2 && j2.ok && Array.isArray(j2.assets) && j2.assets.length) return j2.assets[0].path || j2.assets[0].url || ''; } catch(e){} finally { AI_LOCKS.cover=false; } const t=encodeURIComponent(title); return `https://dummyimage.com/1200x630/0b7285/ffffff&text=${t}`; }
+
+      // Hook preSave: bảo hiểm nếu UI chưa kịp điền
+      CMS.registerEventListener({ name:'preSave', handler: async ({ entry })=>{
+        let data=entry.get('data'); const title=String(data.get('title')||'').trim();
+        if(title && (!data.get('slug') || String(data.get('slug')).trim()==='')) data=data.set('slug', slugify(title));
+        const now=formatNow(); if(!data.get('published') || String(data.get('published')).trim()==='') data=data.set('published', now); data=data.set('updated', now);
+        const key=getAutofillKey(); const already=localStorage.getItem(key)==='1';
+        const body=String(data.get('body')||'').trim(); if(title && !body && !already){ try{ const content=await aiWriteFromTitle(title); if(content) data=data.set('body', content); }catch(e){} }
+        const image=String(data.get('image')||'').trim(); if(title && !image && !already){ try{ const img=await aiCoverFromTitle(title); if(img) data=data.set('image', img); }catch(e){} }
+        try{ localStorage.setItem(key, '1'); }catch(e){}
+        return data; } });
+
+      // Prompt Picker (per-collection)
+      (function createPromptPicker(){ const btn=document.createElement('button'); btn.id='ai-prompt-picker'; btn.title='Chọn Prompt AI'; btn.textContent='Prompt'; Object.assign(btn.style,{ position:'fixed', right:'12px', bottom:'128px', zIndex:100001, padding:'.5rem .65rem', borderRadius:'6px', background:'#374151', color:'#fff', border:'none', boxShadow:'0 2px 6px rgba(0,0,0,0.2)', cursor:'pointer' }); btn.addEventListener('click', openPromptModal); document.body.appendChild(btn); function openPromptModal(){ if(document.getElementById('ai-prompt-modal')) return showModal(); const m=document.createElement('div'); m.id='ai-prompt-modal'; Object.assign(m.style,{ position:'fixed', right:'12px', bottom:'180px', width:'480px', maxHeight:'72vh', zIndex:100002, background:'#fff', border:'1px solid rgba(0,0,0,0.08)', borderRadius:'8px', boxShadow:'0 8px 24px rgba(0,0,0,0.15)', display:'flex', flexDirection:'column' }); m.innerHTML=`<div style="padding:8px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between"><strong>AI Prompt Settings</strong><button id="ai-prompt-close" style="font-size:14px">×</button></div><div style="padding:8px;overflow:auto;flex:1;font-size:13px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:center;margin-bottom:10px"><label style="font-weight:600">Collection hiện tại</label><input id="ai-prompt-collection" readonly style="padding:.4rem;border:1px solid #ddd;border-radius:6px" /></div><label style="display:block;margin-bottom:6px;font-weight:600">Preset</label><select id="ai-prompt-preset" style="width:100%;padding:.4rem;border:1px solid #ddd;border-radius:6px;margin-bottom:12px"><option value="friendly">Thân thiện (khuyến nghị)</option><option value="expert_seo">Chuyên gia + SEO</option><option value="short_image">Ngắn gọn + gợi ý ảnh trong body</option><option value="custom">Tùy biến (dùng văn bản bên dưới)</option></select><label style="display:block;margin:10px 0 6px;font-weight:600">Body Prompt (Custom)</label><textarea id="ai-prompt-body" rows="6" placeholder="Nhập prompt tuỳ biến cho nội dung. Dùng $TITLE để chèn tiêu đề." style="width:100%;padding:.5rem;border:1px solid #ddd;border-radius:6px"></textarea><label style="display:block;margin:10px 0 6px;font-weight:600">Cover Prompt (Custom)</label><textarea id="ai-prompt-cover" rows="4" placeholder="Nhập prompt tuỳ biến cho ảnh bìa. Dùng $TITLE để chèn tiêu đề." style="width:100%;padding:.5rem;border:1px solid #ddd;border-radius:6px"></textarea></div><div style="padding:8px;border-top:1px solid #eee;display:flex;gap:8px;justify-content:flex-end"><button id="ai-prompt-reset" style="padding:.45rem .7rem">Mặc định</button><button id="ai-prompt-save" style="padding:.45rem .7rem;background:#0b7285;color:#fff;border:none;border-radius:6px">Lưu</button></div>`; document.body.appendChild(m); const col=getCurrentCollection(); const presetSel=m.querySelector('#ai-prompt-preset'); const bodyArea=m.querySelector('#ai-prompt-body'); const coverArea=m.querySelector('#ai-prompt-cover'); const colInput=m.querySelector('#ai-prompt-collection'); colInput.value=col; presetSel.value=getSelectedPreset(col); bodyArea.value=getCustomBodyPrompt(col); coverArea.value=getCustomCoverPrompt(col); m.querySelector('#ai-prompt-close').addEventListener('click', ()=>{ m.style.display='none'; }); m.querySelector('#ai-prompt-save').addEventListener('click', ()=>{ setSelectedPreset(col, presetSel.value); setCustomBodyPrompt(col, bodyArea.value); setCustomCoverPrompt(col, coverArea.value); alert('Đã lưu prompt cho collection '+col+'.'); m.style.display='none'; }); m.querySelector('#ai-prompt-reset').addEventListener('click', ()=>{ presetSel.value='friendly'; bodyArea.value=''; coverArea.value=''; }); showModal(); } function showModal(){ const m=document.getElementById('ai-prompt-modal'); if(m) m.style.display='flex'; } })();
+
+      // Debug panel
+      function toggleDebugPanel(force){ var on=force || location.search.includes('cms_debug=1'); if(!on) return; if(document.getElementById('cms-debug')) return; var panel=document.createElement('div'); panel.id='cms-debug'; Object.assign(panel.style,{ position:'fixed', left:'12px', bottom:'12px', zIndex:100003, background:'#111827', color:'#fff', padding:'8px', borderRadius:'8px', fontSize:'12px', maxWidth:'360px' }); panel.innerHTML=`<div style="margin-bottom:6px"><b>CMS Debug</b></div><div id="cms-debug-info" style="white-space:pre-wrap"></div><div style="margin-top:6px;display:flex;gap:6px"><button id="cms-debug-refresh">Refresh</button><button id="cms-debug-clear">Clear LS</button></div>`; document.body.appendChild(panel); function refresh(){ try{ var info=document.getElementById('cms-debug-info'); var user=localStorage.getItem('decap-cms-user'); var mock=localStorage.getItem('decap_ai_use_mock'); var keys=Object.keys(localStorage).filter(k=>k.startsWith('ai_prompt_')||k.startsWith('ai_autofilled:')); info.textContent='user: '+(user||'(none)')+'\nmock: '+(mock||'(none)')+'\nprompt-keys:\n - '+(keys.join('\n - ')||'(none)'); }catch(e){} } refresh(); document.getElementById('cms-debug-refresh').addEventListener('click', refresh); document.getElementById('cms-debug-clear').addEventListener('click', function(){ ['decap_oauth_payload','decap_token','decap-cms-user'].forEach(k=>localStorage.removeItem(k)); alert('Đã xoá token/payload khỏi localStorage'); refresh(); }); }
+      toggleDebugPanel(false);
+    </script>
   </body>
 </html>
-``
