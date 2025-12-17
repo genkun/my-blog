@@ -46,7 +46,7 @@ collections:
     folder: "src/content/posts"
     create: true
     extension: "md"
-    slug: "{{year}}-{{month}}-{{day}}-{{slug}}"
+    slug: "{{slug}}"
     summary: "{{title}} — {{year}}/{{month}}/{{day}}"
     view_filters:
       - { label: "Drafts", field: draft, pattern: true }
