@@ -11,7 +11,7 @@ backend:
 
   # Dùng custom OAuth provider (serverless ở blog.thien.ac)
   # => /api/oauth (index.js) sẽ 302 tới GitHub authorize
-  base_url: https://blog.thien.ac
+  base_url: https://thienac.vercel.app/
   auth_endpoint: /api/oauth
 
   # Client ID & scope gửi kèm khi dùng custom provider
@@ -79,3 +79,4 @@ collections:
     fields:
       - { label: "Title", name: "title", widget: "string" }
       - { label: "Body (AI)", name: "body", widget: "autobody" }
+
